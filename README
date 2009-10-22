@@ -1,0 +1,7 @@
+HDP-BAYES-VOWELS
+
+Ultimately, this will be an implementation of Feldman et al.'s (2009) hierarchical DP model of phonetic/lexical learning.
+
+Right now, it's some warm-up stuff:
+  finiteNormMixtureGibbs.r -- Gibbs sampler for a FMM Gaussian model of arbitrary dimensions
+  dpNormMixtureGibbs.r -- Gibbs sampler for a DP Guassian Mixture model
