@@ -11,7 +11,8 @@
 ###   http://files.ling.umd.edu/locker/Statistics/Books/
 ###
 ### Dave Kleinschmidt
-###   Oct 2009
+###   Oct 20 2009 -- cloned from finiteNormMixtureGibbs.r
+###   Oct 22 2009 -- change component/label representation (Z=[1, 2, 1, 1, ...])
 
 
 library(bayesm)
@@ -23,8 +24,8 @@ library(mnormt)
 compHist <- function(pts, comps) {
   h <- NULL
   h0 <- hist(pts, plot=FALSE)
-  for (ii in 1:nrow(comps)) {
-    hn <- hist(pts[comps[ii,]==1], breaks=h0$breaks, plot=FALSE)
+  for (c in unique(comps)) {
+    hn <- hist(pts[comps==c], breaks=h0$breaks, plot=FALSE)
     h <- rbind(h, hn$counts)
   }
   colnames(h) <- h0$mids
@@ -34,9 +35,9 @@ compHist <- function(pts, comps) {
 # 2-d scatterplot, labled by component assignment
 comp2dplot <- function(pts, comps) {
   plot(pts, type="n")
-  for (ii in 1:nrow(comps)) {
-    ppts <- pts[comps[ii,]==1, ]
-    points(ppts[,1], ppts[,2], pch=as.character(ii))
+  for (c in unique(comps)) {
+    ppts <- pts[comps==c, ]
+    points(ppts[,1], ppts[,2], pch=as.character(c))
   }
 }
 
@@ -54,30 +55,35 @@ n <- 200    # number of data points
 g <- 2      # number of components
 
 # underlying component precisions
-C <- c(2, 0, 0, 2, 2, 0, 0, 2)
-dim(C) <- c(d, d, g)
+precision <- 1
+C <- array(rep(diag(precision, d), g), dim=c(d,d,g))
 
 # underlying component means
-MU <- c(-1, 1, -1, 1)
-dim(MU) <- c(d,g)
+W <- array(data=rep(c(1,-1), d), dim=c(g,d))
 
 # generate observations from the mixture model
-X <- rbind(rmnorm(n/2, mean=MU[1,], varcov = solve(C[,,1])),
-           rmnorm(n/2, mean=MU[2,], varcov = solve(C[,,2])) )
-
+X <- rbind(rmnorm(n/2, mean=W[1,], varcov = solve(C[,,1])),
+           rmnorm(n/2, mean=W[2,], varcov = solve(C[,,2])) )
+dim(X) <- c(n, d)
 
 
 # Hyperparameters
 alpha <- 1
-W <- MU
 K <- rep(1, g)
 R <- rep(5, g)
 
 # initial component assignments
-Z <- rmultinom(n, size=1, prob=rdirichlet(rep(alpha, g)))
+Z <- apply(rmultinom(n, size=1, prob=rdirichlet(rep(alpha, g))),
+           2, function(x) {which(x==1)})
+comps <- 1:g
+
+## initialize component mean and precision variables
+S <- array(data=rep(0, d*d*g), dim=c(d,d,g))
+MU <- array(data=rep(0, d*g), dim=c(g,d))
+
 
 # Number of full sweeps through the sampler
-nIter <- 100
+nIter <- 50
 
 
 # open a plot window
@@ -85,45 +91,50 @@ x11()
 
 ## GIBBS SAMPLER ###########################################
 for (iter in 1:nIter) {
-  N <- rowSums(Z)
+    ## get component counts
+    N <- sapply(comps, function(x) {sum(Z==x)})
 
-  ## update component parameters
-  for (ii in 1:g) {
-    x <- X[Z[ii,] == 1, ]
-    xbar <- colMeans(x)
+    ## update component parameters
+    for (ii in comps) {
+        x <- array(X[Z==ii, ], c(N[ii],d))
+        xbar <- colMeans(x)
 
-    # sample from the conditional posterior for the precision
-    v <- 0
-    for (jj in 1:N[ii]) {
-      v <- v + (x[jj, ]-xbar)%*%t(x[jj, ]-xbar)
+        ## sample from the conditional posterior for the precision
+        v <- 0
+        for (jj in 1:N[ii]) {
+            v <- v + (x[jj, ]-xbar)%*%t(x[jj, ]-xbar)
+        }
+        Cstar <- solve(solve(C[,,ii]) +
+                       v +
+                       (N[ii]*R[ii]/(N[ii]+R[ii]) *
+                        (xbar-W[ii,]) %*% t(xbar-W[ii,])))
+
+        S[,,ii] <- rrwishart(N[ii]+R[ii], Cstar)
+        
+        
+        ## sample from the conditional posterior for the mean
+        w <- (N[ii]*xbar + K[ii]*W[ii,]) / (N[ii]+K[ii])
+        MU[ii,] <- rmnorm(1, mean=w, varcov=solve( (N[ii]+K[ii])*S[,,ii] ))
     }
-    Cstar <- solve(solve(C[,,ii]) +
-                   v +
-                   (N[ii]*R[ii]/(N[ii]+R[ii]) *
-                    (xbar-W[ii,]) %*% t(xbar-W[ii,])))
-
-    S[,,ii] <- rrwishart(N[ii]+R[ii], Cstar)
     
-    
-    # sample from the conditional posterior for the mean
-    w <- (N[ii]*xbar + K[ii]*W[ii,]) / (N[ii]+K[ii])
-    MU[ii,] <- rmnorm(1, mean=w, varcov=solve( (N[ii]+K[ii])*S[,,ii] ))
-  }
-  
-  ## re-assign observations to categories 
-  tau <- rep(0,g)
-  for (jj in 1:n) {
-    for (ii in 1:g) {
-      tau[ii] <- (N[ii] - Z[ii,jj] + alpha/g) / (n - 1 + alpha) *
-        dmnorm(X[jj,], mean=MU[ii,], varcov=solve(S[,,ii]))
+    ## re-assign observations to categories 
+    tau <- rep(0,length(comps))
+    for (jj in 1:n) {
+        for (ii in comps) {
+            tau[ii] <- (N[ii] - (Z[jj]==ii) + alpha/g) / (n - 1 + alpha) *
+                dmnorm(X[jj,], mean=MU[ii,], varcov=solve(S[,,ii]))
+        }
+        ##tau <- tau/sum(tau)    ###### rmultinom autmoatically normalizes probs 
+        Z[jj] <- which(rmultinom(n=1, size=1, prob=tau)==1)
     }
-    #tau <- tau/sum(tau)    ###### rmultinom autmoatically normalizes probs 
-    Z[,jj] <- rmultinom(n=1, size=1, prob=tau)
-  }
 
-  # visualization
-  comp2dplot(X,Z)
+    ## visualization
+    if (d==1) {
+        compHist(X,Z)
+    } else {
+        comp2dplot(X[,1:2], Z)
+    }
 }
 
 
-    
+
