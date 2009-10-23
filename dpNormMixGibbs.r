@@ -13,10 +13,12 @@
 ### Dave Kleinschmidt
 ###   Oct 20 2009 -- cloned from finiteNormMixtureGibbs.r
 ###   Oct 22 2009 -- change component/label representation (Z=[1, 2, 1, 1, ...])
+###   Oct 23 2009 -- added ellipse/contour plotting to 2D visualization
 
 
 library(bayesm)
 library(mnormt)
+library(ellipse)
 
 
 ## helper functions for visualization:
@@ -33,13 +35,16 @@ compHist <- function(pts, comps) {
 }
 
 # 2-d scatterplot, labled by component assignment
-comp2dplot <- function(pts, comps) {
+comp2dplot <- function(pts, labels, comps, means, precisions) {
   plot(pts, type="n")
-  for (c in unique(comps)) {
-    ppts <- pts[comps==c, ]
-    points(ppts[,1], ppts[,2], pch=as.character(c))
+  for (co in comps) {
+    ppts <- pts[labels==co, ]
+    points(ppts[,1], ppts[,2], pch=as.character(co))
+    lines(ellipse(x=solve(precisions[1:2,1:2,which(comps==co)]),
+                  centre=means[which(comps==co),1:2]))
   }
 }
+
 
 # wrapper for bayesm rwishart function (which returns a list...)
 rrwishart <- function(nu, V) {
@@ -83,11 +88,11 @@ MU <- array(data=rep(0, d*g), dim=c(g,d))
 
 
 # Number of full sweeps through the sampler
-nIter <- 50
+nIter <- 100
 
 
 # open a plot window
-x11()
+#x11()
 
 ## GIBBS SAMPLER ###########################################
 for (iter in 1:nIter) {
@@ -132,7 +137,7 @@ for (iter in 1:nIter) {
     if (d==1) {
         compHist(X,Z)
     } else {
-        comp2dplot(X[,1:2], Z)
+        comp2dplot(X[,1:2], Z, comps, MU, S)
     }
 }
 
