@@ -35,16 +35,16 @@ compHist <- function(pts, comps) {
 }
 
 ## 2-d scatterplot, labled by component assignment
-palette(palette("default")[-1])
+palette(c("red", "green3", "blue", "cyan", "magenta", "yellow"))
 comp2dplot <- function(pts, labels, comps, means, precisions) {
   plot(pts, type="n")
   for (co in comps) {
     ppts <- pts[labels==co, ]
     if (!is.matrix(ppts)) {ppts <- matrix(ppts, length(ppts)/2, 2)}
-    points(ppts[,1], ppts[,2], pch=as.character(co), col=((which(comps==co)-1)%%7+1))
+    points(ppts[,1], ppts[,2], pch=as.character(co), col=(co%%7+1))
     lines(ellipse(x=solve(precisions[1:2,1:2,which(comps==co)]),
                   centre=means[which(comps==co),1:2]),
-          col=((which(comps==co)-1)%%7+1))
+          col=(co%%7+1))
   }
 }
 
@@ -81,12 +81,15 @@ N <- n
 S <- array(data=rep(0, d*d), dim=c(d,d,1))
 MU <- array(data=rep(0, d), dim=c(1,d))
 
+## initialize the list for storing data
+data <- NULL
+
 ## open a plot window
 x11()
 
 #### CONSTANTS ETC ##################################################################
 ## Number of full sweeps through the sampler
-nIter <- 100
+nIter <- 5
 ## Number of samples used to estimate p(x) for new components
 nPriorSamples <- 5
 
@@ -101,8 +104,6 @@ C <- solve(cov(X))
 ## GIBBS SAMPLER #####################################################################
 ######################################################################################
 for (iter in 1:nIter) {
-  ## get component counts (NOW UPDATED BELOW)
-  #N <- sapply(comps, function(x) {sum(Z==x)})
 
   ## update component parameters #################################################
   for (co in comps) {
@@ -152,7 +153,8 @@ for (iter in 1:nIter) {
     if (newComp > length(comps)) {
       ## new component
       ## find a new label
-      comps <- append(comps, min(setdiff(1:(max(comps)+1), comps)))
+      #comps <- append(comps, min(setdiff(1:(max(comps)+1), comps)))
+      comps <- append(comps, max(comps)+1)
       Znew <- tail(comps,1)
       ## store initial component precision and mean
       S <- array(c(S, solve(sigma)), c(d,d,length(comps)))
@@ -181,7 +183,9 @@ for (iter in 1:nIter) {
     Z[obs] <- Znew
   }
 
-  
+  ## record state for this iteration
+  data <- c(data, list(list(Z=Z, S=S, MU=MU, N=N, comps=comps)))
+
   ## visualization
   if (d==1) {
     compHist(X,Z)
