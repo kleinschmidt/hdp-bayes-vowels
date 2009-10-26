@@ -35,14 +35,16 @@ compHist <- function(pts, comps) {
 }
 
 ## 2-d scatterplot, labled by component assignment
+palette(palette("default")[-1])
 comp2dplot <- function(pts, labels, comps, means, precisions) {
   plot(pts, type="n")
   for (co in comps) {
     ppts <- pts[labels==co, ]
     if (!is.matrix(ppts)) {ppts <- matrix(ppts, length(ppts)/2, 2)}
-    points(ppts[,1], ppts[,2], pch=as.character(co))
+    points(ppts[,1], ppts[,2], pch=as.character(co), col=((which(comps==co)-1)%%7+1))
     lines(ellipse(x=solve(precisions[1:2,1:2,which(comps==co)]),
-                  centre=means[which(comps==co),1:2]))
+                  centre=means[which(comps==co),1:2]),
+          col=((which(comps==co)-1)%%7+1))
   }
 }
 
