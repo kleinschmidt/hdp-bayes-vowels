@@ -41,10 +41,11 @@ comp2dplot <- function(pts, labels, comps, means, precisions) {
   for (co in comps) {
     ppts <- pts[labels==co, ]
     if (!is.matrix(ppts)) {ppts <- matrix(ppts, length(ppts)/2, 2)}
-    points(ppts[,1], ppts[,2], pch=as.character(co), col=(co%%7+1))
+    color <- (co-1)%%7 + 1
+    points(ppts[,1], ppts[,2], pch=as.character(co), col=color)
     lines(ellipse(x=solve(precisions[1:2,1:2,which(comps==co)]),
                   centre=means[which(comps==co),1:2]),
-          col=(co%%7+1))
+          col=color)
   }
 }
 
@@ -75,6 +76,7 @@ dim(X) <- c(n, d)
 ## initial component assignments
 Z <- rep(1,n)
 comps <- 1
+nComps <- 1
 N <- n
 
 ## initialize component mean and precision variables (to 0)
@@ -89,7 +91,7 @@ x11()
 
 #### CONSTANTS ETC ##################################################################
 ## Number of full sweeps through the sampler
-nIter <- 5
+nIter <- 100
 ## Number of samples used to estimate p(x) for new components
 nPriorSamples <- 5
 
@@ -129,11 +131,11 @@ for (iter in 1:nIter) {
   }
   
   ## re-assign observations to categories #########################################
-  tau <- rep(0,length(comps))
   for (obs in 1:n) {
+    tau <- rep(0,nComps+1)
     ## get multinomial probabilities
     ## for expressed components:
-    for (k in 1:length(comps)) {
+    for (k in 1:nComps) {
       co <- comps[k]
       tau[k] <- (N[comps==co]-(Z[obs]==co)) / (n-1 +alpha) *
         dmnorm(X[obs,], mean=MU[comps==co,], varcov=solve(S[,,comps==co]))
@@ -145,28 +147,29 @@ for (iter in 1:nIter) {
       mu <- as.vector(rmnorm(mean=W, varcov=sigma/K))
       samps[j] <- dmnorm(X[obs,], mean=mu, varcov=sigma)
     }
-    tau[length(comps)+1] <- alpha / (n-1+alpha) * mean(samps)
+    tau[nComps+1] <- alpha / (n-1+alpha) * mean(samps)
 
     ## draw the new component from a multinomial distribution
     newComp <- which(rmultinom(n=1, size=1, prob=tau)==1)
 
-    if (newComp > length(comps)) {
+    if (newComp > nComps) {
       ## new component
+      nComps <- nComps + 1
       ## find a new label
       #comps <- append(comps, min(setdiff(1:(max(comps)+1), comps)))
       comps <- append(comps, max(comps)+1)
       Znew <- tail(comps,1)
       ## store initial component precision and mean
-      S <- array(c(S, solve(sigma)), c(d,d,length(comps)))
+      S <- array(c(S, solve(sigma)), c(d,d,nComps))
       MU <- rbind(MU, mu)
       ## update counts
-      N[comps==Znew] <- 1
+      N <- append(N, 1)
       N[comps==Z[obs]] <- N[comps==Z[obs]] - 1
     } else {
       ## old component
       ## just update counts:
-      Znew <- which(comps==newComp)
-      N[comps==Znew] <- N[comps==Znew] + 1
+      Znew <- comps[newComp]
+      N[newComp] <- N[newComp] + 1
       N[comps==Z[obs]] <- N[comps==Z[obs]] - 1
     }
 
@@ -174,9 +177,10 @@ for (iter in 1:nIter) {
     if (N[comps==Z[obs]] == 0) {
       whichComp <- which(comps==Z[obs])
       comps <- comps[-whichComp]
+      nComps <- nComps - 1
       N <- N[-whichComp]
-      MU <- MU[-whichComp,]
-      S <- S[,,-whichComp]
+      MU <- array(data=MU[-whichComp,], dim=c(nComps,d))
+      S <- array(data=S[,,-whichComp], dim=c(d,d,nComps))
     }
   
     ## record new label
