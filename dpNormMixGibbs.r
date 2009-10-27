@@ -20,6 +20,9 @@ library(bayesm)
 library(mnormt)
 library(ellipse)
 
+## contains helper function for posterior sampling of alpha rAlphaPosterior()
+source("rasmussen2000.r")
+
 
 ## helper functions ############################################################
 ## plot side-by-side histograms (good for 1-d case)
@@ -105,6 +108,9 @@ C <- solve(cov(X))
 ######################################################################################
 for (iter in 1:nIter) {
 
+  ## update hyperparameters #######################################################
+  alpha <- rAlphaPosterior(num=1, N=N)
+    
   ## update component parameters #################################################
   for (co in comps) {
     nco <- which(comps==co)

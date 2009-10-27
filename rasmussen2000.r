@@ -1,4 +1,6 @@
 
+library(ars)
+
 ## density function for the conditional posterior on the component
 ## precision shape parameter
 dBetaPosterior <- function(Beta, S, w) {
@@ -16,8 +18,16 @@ dBetaPosterior <- function(Beta, S, w) {
     }
 }
 
-## density function for the conditional posterior on the concentration parameter
-dAlphaPosterior <- function(alpha, N) {
-    p <- alpha^(k-3/2) * exp(-1/2/alpha) * gamma(alpha) / gamma(n+alpha)
-    return(p)
+## Sample from the conditional posterior on the category spread parameter alpha
+## using ARS
+rAlphaPosterior <- function(num=1, N) {
+    n <- sum(N)
+    k <- length(N)
+    h <- function(y)
+        {y*(k-0.5) - 0.5*exp(-y) -
+             sapply(y, function(x) {sum(log(exp(x)+seq(0,n-1)))} ) }
+    hprim <- function(y)
+        {k-0.5 + 0.5*exp(-y) -
+             exp(y)*sapply(y, function(x) {sum(1/(exp(x)+seq(0,n-1)))} ) }
+    return(exp(ars(n=num, f=h, fprima=hprim, x=c(-2,0,2))))
 }
