@@ -36,13 +36,16 @@ compHist <- function(pts, comps) {
 
 ## 2-d scatterplot, labled by component assignment
 palette(c("red", "green3", "blue", "cyan", "magenta", "yellow"))
+plotChars <- c(1, 2, 5, 6)
 comp2dplot <- function(pts, labels, comps, means, precisions) {
   plot(pts, type="n")
   for (co in comps) {
     ppts <- pts[labels==co, ]
     if (!is.matrix(ppts)) {ppts <- matrix(ppts, length(ppts)/2, 2)}
-    color <- (co-1)%%7 + 1
-    points(ppts[,1], ppts[,2], pch=as.character(co), col=color)
+    color <- (co-1)%%length(palette()) + 1
+    points(ppts[,1], ppts[,2],
+           pch=plotChars[ceiling(co/length(palette()))],
+           col=color)
     lines(ellipse(x=solve(precisions[1:2,1:2,which(comps==co)]),
                   centre=means[which(comps==co),1:2]),
           col=color)
@@ -149,15 +152,15 @@ for (iter in 1:nIter) {
     }
     tau[nComps+1] <- alpha / (n-1+alpha) * mean(samps)
 
-    ## draw the new component from a multinomial distribution
+    ## sample the new component from a multinomial distribution
     newComp <- which(rmultinom(n=1, size=1, prob=tau)==1)
 
     if (newComp > nComps) {
       ## new component
       nComps <- nComps + 1
       ## find a new label
-      #comps <- append(comps, min(setdiff(1:(max(comps)+1), comps)))
-      comps <- append(comps, max(comps)+1)
+      comps <- append(comps, min(setdiff(1:(max(comps)+1), comps)))
+      #comps <- append(comps, max(comps)+1)
       Znew <- tail(comps,1)
       ## store initial component precision and mean
       S <- array(c(S, solve(sigma)), c(d,d,nComps))
