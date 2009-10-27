@@ -4,4 +4,6 @@ Ultimately, this will be an implementation of Feldman et al.'s (2009) hierarchic
 
 Right now, it's some warm-up stuff:
   finiteNormMixtureGibbs.r -- Gibbs sampler for a FMM Gaussian model of arbitrary dimensions
-  dpNormMixtureGibbs.r -- Gibbs sampler for a DP Guassian Mixture model
+  dpNormMixtureGibbs.r -- Gibbs sampler for a DP Guassian Mixture model.  This needs to be updated to sample
+      from the conditional posteriors for the prior parameters on the component means/covariances, etc.
+  rasmussen2000.r -- Functions/distributions from the Rasmussen (2000) paper on DP as the infinite limit of FMMs
