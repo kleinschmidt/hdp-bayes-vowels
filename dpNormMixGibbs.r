@@ -97,7 +97,7 @@ nIter <- 5
 nPriorSamples <- 5
 
 ## Hyperparameters
-alpha <- 1
+alpha <- 1/rgamma(n=1, shape=1, rate=1)
 K <- 1
 R <- 5
 W <- colMeans(X)
