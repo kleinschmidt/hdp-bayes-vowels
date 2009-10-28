@@ -26,15 +26,27 @@ source("rasmussen2000.r")
 
 ## helper functions ############################################################
 ## plot side-by-side histograms (good for 1-d case)
-compHist <- function(pts, comps) {
+compHist <- function(pts, labels, comps, counts, means, precisions) {
   h <- NULL
   h0 <- hist(pts, plot=FALSE)
-  for (c in unique(comps)) {
-    hn <- hist(pts[comps==c], breaks=h0$breaks, plot=FALSE)
+  for (co in comps) {
+    hn <- hist(pts[labels==co], breaks=h0$breaks, plot=FALSE)
     h <- rbind(h, hn$counts)
   }
   colnames(h) <- h0$mids
-  barplot(h, beside=TRUE)
+  par(mfcol=c(2,1))
+  colors <- (comps-1)%%length(palette()) + 1
+  barplot(h, beside=TRUE, col=colors)
+  ## plot the component pdfs, too
+  counts <- counts/sum(counts)
+  x <- seq(min(h0$breaks), max(h0$breaks), .1)
+  plot(c(min(x), max(x)), c(0,max(counts*dnorm(means, mean=means, sd=sqrt(1/precisions)))),
+       type="n", ylab="", xlab="") 
+  for (compn in 1:length(comps)) {
+    lines(x,
+          counts[compn]*dnorm(x, mean=means[compn], sd=sqrt(1/precisions[compn])),
+          col=colors[compn])
+  }
 }
 
 ## 2-d scatterplot, labled by component assignment
@@ -65,7 +77,7 @@ rrwishart <- function(nu, V) {
 #### INITIALIZATION ###############################################################
 
 ## Generate data points:
-d <- 2      # number of dimensions
+d <- 1      # number of dimensions
 n <- 200    # number of data points
 g <- 2      # number of components (for GENERATION)
 
@@ -93,11 +105,12 @@ MU <- array(data=rep(0, d), dim=c(1,d))
 data <- NULL
 
 ## open a plot window
-x11()
+#x11()
+quartz()
 
 #### CONSTANTS ETC ##################################################################
 ## Number of full sweeps through the sampler
-nIter <- 100
+nIter <- 50
 ## Number of samples used to estimate p(x) for new components
 nPriorSamples <- 5
 
@@ -201,7 +214,7 @@ for (iter in 1:nIter) {
 
   ## visualization
   if (d==1) {
-    compHist(X,Z)
+    compHist(X, Z, comps, N, MU, S)
   } else {
     comp2dplot(X[,1:2], Z, comps, MU, S)
   }
