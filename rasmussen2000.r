@@ -10,7 +10,7 @@ dBetaPosterior <- function(Beta, S, w) {
         k <- dim(S)[3]
         beta <- Beta[1]
         p <- gamma(beta/2)^(-k) *
-            exp(1/(2*beta)) *
+            exp(-1/(2*beta)) *
                 (beta/2)^((2*beta-3)/2) *
                     prod(S*w)^(beta/2) *
                         exp(-beta*w*sum(S)/2)
@@ -23,12 +23,12 @@ dBetaPosterior <- function(Beta, S, w) {
 rBetaPosterior <- function(num=1, S, w) {
     k <- dim(S)[3]
     h <- function(y) {
-        -k*log(gamma(exp(y)/2)) - .5/exp(y) - .5*y - 1.5*log(2) +
-            .5*exp(y) * (k*(y+log(2)) + sum(w*S + log(w*S)))
+        -k*log(gamma(exp(y)/2)) - 0.5/exp(y) - 0.5*y - 1.5*log(2) +
+            0.5*exp(y) * (k*(y-log(2)) + sum(log(w*S) - w*S))
     }
     hprim <- function(y) {
         -k*exp(y)*0.5*digamma(0.5*exp(y)) + 0.5/exp(y) - 0.5 +
-            0.5*exp(y)(k*(y+log(2)+1) + sum(w*S + log(w*S)))
+            0.5*exp(y) * (k*(y-log(2)+1) + sum(log(w*S) - w*S))
     }
     return(exp(ars(n=num, f=h, fprima=hprim)))
 }

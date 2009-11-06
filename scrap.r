@@ -51,7 +51,7 @@ hprim <- function(y, S, w) {
 }
 Hprim <- function(y, S, w) {
     k <- dim(S)[3]
-    return(y - k*exp(y)/2*digamma(exp(y)/2) + 1/2/exp(y) +
+    return(1 - k*exp(y)/2*digamma(exp(y)/2) + 1/2/exp(y) +
            (k*exp(y)/2)*(y-log(2)) + (k*exp(y)-3)/2 +
            exp(y)/2 * sum(log(S*w) - S*w))
 }
