@@ -28,7 +28,7 @@ rBetaPosterior <- function(num=1, S, w) {
     }
     hprim <- function(y) {
         -k*exp(y)*0.5*digamma(0.5*exp(y)) + 0.5/exp(y) - 0.5 +
-            0.5*exp(y)(k*(y+log(2)+1) + sum(w*S + log(w*S)))
+            0.5*exp(y)*(k*(y+log(2)+1) + sum(w*S + log(w*S)))
     }
     return(exp(ars(n=num, f=h, fprima=hprim)))
 }
