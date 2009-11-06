@@ -23,12 +23,22 @@ dBetaPosterior <- function(Beta, S, w) {
 rBetaPosterior <- function(num=1, S, w) {
     k <- dim(S)[3]
     h <- function(y) {
-        -k*log(gamma(exp(y)/2)) - 0.5/exp(y) - 0.5*y - 1.5*log(2) +
-            0.5*exp(y) * (k*(y-log(2)) + sum(log(w*S) - w*S))
+        ## ALSO BROKEN
+#        -k*log(gamma(exp(y)/2)) - 0.5/exp(y) - 0.5*y - 1.5*log(2) +
+#            0.5*exp(y) * (k*(y-log(2)) + sum(log(w*S) - w*S))
+        ## This should be right...based on tests in scrap.r
+        1.5*log(2) - 0.5*y - k*log(gamma(exp(y)/2)) - 0.5/exp(y) +
+          0.5*k*exp(y) * (y-log(2)+sum(log(S*w)-S*w)/k)
     }
     hprim <- function(y) {
-        -k*exp(y)*0.5*digamma(0.5*exp(y)) + 0.5/exp(y) - 0.5 +
-            0.5*exp(y) * (k*(y-log(2)+1) + sum(log(w*S) - w*S))
+#        1 - k*exp(y)/2*digamma(exp(y)/2) + 0.5/exp(y) +
+#          (k*exp(y)/2)*(y-log(2)) + (k*exp(y)-3)/2 +
+#            exp(y)/2 * sum(log(S*w) - S*w)
+        ## this should be equivalent, but more efficient
+        -0.5 + 0.5/exp(y) + 0.5*k*exp(y) * (y - digamma(exp(y)/2) + 1-log(2) + sum(log(S*w)-S*w)/k)
+        ## BROKEN (kept in for posterities sake..yuk yuk yuk)
+#        -k*exp(y)*0.5*digamma(0.5*exp(y)) + 0.5/exp(y) - 0.5 +
+#            0.5*exp(y) * (k*(y-log(2)+1) + sum(log(w*S) - w*S))
     }
     return(exp(ars(n=num, f=h, fprima=hprim)))
 }
