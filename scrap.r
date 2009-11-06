@@ -55,3 +55,18 @@ Hprim <- function(y, S, w) {
            (k*exp(y)/2)*(y-log(2)) + (k*exp(y)-3)/2 +
            exp(y)/2 * sum(log(S*w) - S*w))
 }
+
+
+## some code to test stuff...
+testHprime <- function() {
+    y <- seq(-5,5,.05)
+    S <- array(data=c(2,2,2,2), dim=c(1,1,4))
+    w <- 1
+    rise <- h(tail(y,-1), S, w) - h(head(y,-1), S, w)
+    run <- tail(y,-1) - head(y,-1)
+
+    x11(); par(mfcol=c(1,3));
+    plot(y, h(y,S,w), type="l");
+    plot(tail(y,-1), rise/run, type="l");
+    plot(y, hprim(y,S,w), type="l")
+}
