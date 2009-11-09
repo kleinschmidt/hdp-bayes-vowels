@@ -22,8 +22,7 @@ dBetaPosterior <- function(Beta, S, w) {
 
 ## Sample from the conditional posterior on beta (component precision prior shape) using
 ## ARS
-rBetaPosterior <- function(num=1, S, w) {
-    k <- dim(S)[3]
+rBetaPosterior <- function(num=1, S, w, k=dim(S)[3]) {
     h <- function(y) {
         1.5*log(2) - 0.5*y - k*log(gamma(exp(y)/2)) - 0.5/exp(y) +
           0.5*k*exp(y) * (y-log(2)+sum(log(S*w)-S*w)/k)
@@ -64,6 +63,7 @@ dpgaussRun <- function(X, nIter) {
     varX <- var(X)
     precisX <- solve(varX)
 
+    ## initialize hyperparameters
     lambda <- rnorm(n=1, mean=mean(X), sd=sd(X))
     r <- rgamma(n=1, shape=1, scale=solve(varX))
     MU <- rnorm(n=1, mean=lambda, sd=solve(sqrt(r)))
@@ -77,8 +77,8 @@ dpgaussRun <- function(X, nIter) {
     nComps <- 1
     N <- nObs
     
-    ## initialize hyperparameters
-    for (iter in 1:nIters) {
+
+    for (iter in 1:nIter) {
         ## update hyperparameters
         lambda <- rnorm(n=1,
                         mean=(meanX*precisX + r*sum(MU))/(precisX+nComps*r),
@@ -90,7 +90,7 @@ dpgaussRun <- function(X, nIter) {
         w <- rgamma(n=1,
                     shape=(nComps*beta+1),
                     rate=(precisX + beta*sum(S))/(nComps*beta+1))
-        beta <- rBetaPosterior(num=1, S, w)
+        beta <- rBetaPosterior(num=1, S, w, nComps)
 
         alpha <- rAlphaPosterior(num=1, N)
 
@@ -102,21 +102,21 @@ dpgaussRun <- function(X, nIter) {
                             sd=solve(sqrt(N[co]*S[co] + r)) )
             S[co] <- rgamma(n=1,
                             shape=(beta+N[co]),
-                            rate=(w*beta + sum((Xco-MU[co])^2))/(beta+N[co]) )
+                            scale=(w*beta + sum((Xco-MU[co])^2))/(beta+N[co]) )
         }
 
         ## update latent variables (category/component assignments)
 
-        for (j in 1:nObs) {
+        for (obs in 1:nObs) {
             probs <- rep(0,nComps+1)
             for (co in 1:nComps) {
-                probs[co] <- dnorm(X[j], mean=MU[co], sd=solve(sqrt(S[co]))) *
-                    (N[co]-(Z[j]==comps[co]))
+                probs[co] <- dnorm(X[obs], mean=MU[co], sd=solve(sqrt(S[co]))) *
+                    (N[co]-(Z[obs]==comps[co]))
             }
             ## draw component parameter values from their priors for unrepresented comps
             mu <- rnorm(n=1,mean=lambda,sd=solve(sqrt(r)))
             s <- rgamma(n=1,shape=beta, rate=w)
-            probs[nComps+1] <- dnorm(X[j],
+            probs[nComps+1] <- dnorm(X[obs],
                                      mean=mu,
                                      sd=solve(sqrt(s))) * alpha
             newComp <- which(rmultinom(n=1, size=1, prob=probs)==1)
@@ -146,8 +146,10 @@ dpgaussRun <- function(X, nIter) {
                 comps <- comps[-whichComp]
                 nComps <- nComps - 1
                 N <- N[-whichComp]
-                MU <- array(data=MU[-whichComp,], dim=c(nComps,d))
-                S <- array(data=S[,,-whichComp], dim=c(d,d,nComps))
+                #MU <- array(data=MU[-whichComp,], dim=c(nComps,d))
+                #S <- array(data=S[,,-whichComp], dim=c(d,d,nComps))
+                MU <- MU[-whichComp]
+                S <- S[-whichComp]
             }
 
             ## Record the new component assignment for this observation
@@ -160,4 +162,6 @@ dpgaussRun <- function(X, nIter) {
         data[[iter]] <- list(Z=Z, comps=comps, MU=MU, S=S, N=N,
                              alpha=alpha, beta=beta, w=w, r=r, lambda=lambda)
     }
+
+    return(data)
 }
