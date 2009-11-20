@@ -16,7 +16,7 @@ compHist <- function(pts, labels, comps, counts, means, precisions) {
   barplot(h, beside=TRUE, col=colors)
   ## plot the component pdfs, too
   counts <- counts/sum(counts)
-  x <- seq(min(h0$breaks), max(h0$breaks), .1)
+  x <- seq(min(h0$breaks), max(h0$breaks), (max(h0$breaks)-min(h0$breaks))/300)
   plot(c(min(x), max(x)), c(0,max(counts*dnorm(means, mean=means, sd=sqrt(1/precisions)))),
        type="n", ylab="", xlab="") 
   for (compn in 1:length(comps)) {
