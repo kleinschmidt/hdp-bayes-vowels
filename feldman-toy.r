@@ -1,3 +1,7 @@
+Alpha <- 1
+Beta <- 1
+r <- 5
+
 mu0 <- 0
 s0 <- 1
 nu0 <- 1.001
@@ -20,6 +24,7 @@ lh <- list(matrix(c(1,1, 3,1, 3,3), byrow=TRUE, ncol=2),
 
 Nl <- c(200, 200, 100, 100)
 Np <- c(400, 200, 200, 400)
+numwords <- 600
 
 
 ## generate observations from a lexical item
@@ -37,7 +42,8 @@ lexgen <- function(n, lexeme, phonlab, mu, s, width=0) {
 w <- NULL
 z <- NULL
 for(n in 1:numlex) {
-    w <- rbind(X, lexgen(Nl[n], l[[n]], phonlab, phonmeans, phonvar, max(lexlen)))
+    w <- rbind(w, lexgen(Nl[n], l[[n]], phonlab, phonmeans, phonvar, max(lexlen)))
     z <- c(z, rep(n, Nl[n]))
 }
 
+wk <- list(1:200, 201:400, 401:500, 501:600)
