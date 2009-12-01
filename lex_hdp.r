@@ -48,7 +48,6 @@ lexhdp <- function(w, nIter=10, Alpha=1, Beta=1, mu0=0, sigma0=1, nu0=1.001, OUT
                      unlist(lapply(lexlen, function(x) {1:x}))))
 
 
-    nIter <- 10
     modelState <- vector("list", nIter)
     
 
@@ -66,7 +65,7 @@ lexhdp <- function(w, nIter=10, Alpha=1, Beta=1, mu0=0, sigma0=1, nu0=1.001, OUT
             Nl[kkz] <- Nl[kkz] - 1
 
             ## if Nl is 0, set it to Beta/(r+1)
-            if (Nl==0) {
+            if (Nl[kkz]==0) {
                 heldOutLastObs <- TRUE
                 Nl[kkz] <- Beta/(r+1)
             } else {
@@ -206,14 +205,15 @@ lexhdp <- function(w, nIter=10, Alpha=1, Beta=1, mu0=0, sigma0=1, nu0=1.001, OUT
 
         if (OUTPUT=="FULL") {
             modelState[[iter]] <-
-              list(z, lexlab, lexlen, numlex, l, Nl, wk, phonlab, numphon, Np, lh, Alpha, Beta, r)
+              list(z=z, lexlab=lexlab, lexlen=lexlen, numlex=numlex, l=l, Nl=Nl, wk=wk,
+                   phonlab=phonlab, numphon=numphon, Np=Np, lh=lh, Alpha=Alpha, Beta=Beta, r=r)
         } else {
             modelState[[iter]] <-
               list(z=z, l=l)
         }
     } ## end: one iteration
 
-
+ 
     return(modelState)
 
 
