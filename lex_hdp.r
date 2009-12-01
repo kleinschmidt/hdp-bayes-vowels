@@ -2,7 +2,7 @@
 ## by Feldman et al. 2009
 
 
-lexhdp <- function(w, Alpha, Beta, mu0, sigma0, nu0) {
+lexhdp <- function(w, nIter=10, Alpha=1, Beta=1, mu0=0, sigma0=1, nu0=1.001, OUTPUT="FULL") {
     ## "data structures"
     ## observed words:
     ## w[j,i]       value of position i of word j (NULL entires for short words)
@@ -48,10 +48,12 @@ lexhdp <- function(w, Alpha, Beta, mu0, sigma0, nu0) {
                      unlist(lapply(lexlen, function(x) {1:x}))))
 
 
-    nIter <- 1
+    nIter <- 10
+    modelState <- vector("list", nIter)
     
 
     for (iter in 1:nIter) {
+        cat("ITERATION NUMBER", iter, "\n")
         ## first sweep: update word labels
         ## for each word in w:
         for (jj in 1:numwords) {
@@ -62,7 +64,15 @@ lexhdp <- function(w, Alpha, Beta, mu0, sigma0, nu0) {
             ## remove jjth word from wk, Nl
             wk[[kkz]] <- wk[[kkz]] [wk[[kkz]]!=jj]
             Nl[kkz] <- Nl[kkz] - 1
-            ## NEED TO CHECK IF Nl[kkz] == 0 NOW...
+
+            ## if Nl is 0, set it to Beta/(r+1)
+            if (Nl==0) {
+                heldOutLastObs <- TRUE
+                Nl[kkz] <- Beta/(r+1)
+            } else {
+                heldOutLastObs <- FALSE
+            }
+                
 
             ## calculate likelihoods:
             probs <- vector("numeric", numlex+r)
@@ -81,7 +91,10 @@ lexhdp <- function(w, Alpha, Beta, mu0, sigma0, nu0) {
             
             ## multiply by Ns/beta
             ## sample new p from multinomial distribution
-            newkk <- which(rmultinom(1, 1, probs*c(Nl,rep(Beta/r,r)))==1)
+            newkk <- which(rmultinom(1, 1, probs*c(Nl,rep(Beta/(r+heldOutLastObs),r)))==1)
+
+            ## correct for treating a totally held out component as unexpressed
+            if (heldOutLastObs) {Nl[kkz] <- 0}
             
             ## update counts/labels
             if (newkk > numlex) {
@@ -94,12 +107,15 @@ lexhdp <- function(w, Alpha, Beta, mu0, sigma0, nu0) {
                 l[[numlex+1]] <- newlex
                 ## update phoneme->segment mappings and counts
                 lh <- updateLh(lh, newlex, newID)
+                Np <- updateNp(Np, newlex)
                 ## and add count/length entries
                 Nl <- append(Nl, 1)
                 lexlen <- append(lexlen, length(newlex))
                 numlex <- numlex + 1
                 ## ...as well as a lexeme->observation map entry
                 wk[[numlex]] <- jj
+                cat("  Adding new lexeme with ID ", newID,
+                    " (word number ", jj, ")\n", sep="")
             } else {
                 ## old component
                 newID <- lexlab[newkk]
@@ -112,9 +128,13 @@ lexhdp <- function(w, Alpha, Beta, mu0, sigma0, nu0) {
 
             ## check to see if the old lexeme is empty, and delete it if so
             if (Nl[kkz] == 0) {
+                cat("  Removing lexeme ID number ", lexlab[kkz],
+                    " (Nl = ", Nl[kkz],
+                    ", word number ", jj, ")\n", sep="")
                 for (hh in decodeZ(unique(l[[kkz]]), phonlab)) {
                     lh[[hh]] <- matrix(lh[[hh]] [lh[[hh]][,1] != lexlab[kkz], ], ncol=2)
                 }
+                Np <- Np - apply(sapply(l[[kkz]], function(p) {phonlab==p}), 1, sum)
                 lexlab <- lexlab[-kkz]
                 lexlen <- lexlen[-kkz]
                 numlex <- numlex - 1
@@ -158,6 +178,8 @@ lexhdp <- function(w, Alpha, Beta, mu0, sigma0, nu0) {
                     ## record the new ID
                     Np[newhh] <- 1
                     lh[[newhh]] <- matrix(c(lexlab[kk], ii), ncol=2)
+                    cat("  Adding new phoneme with ID ", newID,
+                        " (lexID = ", lexlab[kk], ", segment = ", ii, ")\n", sep="")
                 } else {
                     ## old component
                     newID <- phonlab[newhh]
@@ -170,6 +192,10 @@ lexhdp <- function(w, Alpha, Beta, mu0, sigma0, nu0) {
 
                 ## remove old comp if it's empty
                 if (Np[hhl] == 0) {
+                    ## a helpful message!
+                    cat("  Removing phoneme ID number ", phonlab[hhl],
+                        " (Np = ", Np[hhl],
+                        ", lexID = ", lexlab[kk], ", segment = ", ii, ")\n", sep="")
                     lh <- lh[-hhl]
                     Np <- Np[-hhl]
                     numphon <- numphon - 1
@@ -178,104 +204,133 @@ lexhdp <- function(w, Alpha, Beta, mu0, sigma0, nu0) {
             }
         } ## end: second sweep
 
+        if (OUTPUT=="FULL") {
+            modelState[[iter]] <-
+              list(z, lexlab, lexlen, numlex, l, Nl, wk, phonlab, numphon, Np, lh, Alpha, Beta, r)
+        } else {
+            modelState[[iter]] <-
+              list(z=z, l=l)
+        }
     } ## end: one iteration
 
 
-    ## helper function to retrieve observations assigned to lexeme kk
-    getLexObs <- function(kk) {
-        obs <- matrix(w[wk[[kk]],1:lexlen[kk]], ncol=lexlen[kk])
-        return(obs)
-    }
+    return(modelState)
 
-    ## helper function to get observations assigned to phoneme hh
-    getPhonObs <- function(hh) {
-        obs <- unlist(apply(lh[[hh]],   # matrix of [nk,i] rows
-                            1,          # "margainalize" over rows
-                            function(x) {w[wk[[which(lexlab==x[1])]], x[2]]}))
-                                        # index into w matrix, getting proper wk index
-                                        # using lexlab
-        return(obs)
-    }
-
-    ## convert stable component labels (ID number) into vector index
-    decodeZ <- function(z, lexlab) {
-        sapply(z, function(l) {which(lexlab==l)})
-    }
-
-    ## calculate the likelihood of a single word observation given a class
-    wordlhood <- function(obs, lexeme) {
-        lhood <- 1
-        for (ii in 1:length(lexeme)) {
-            hh <- decodeZ(lexeme[ii], phonlab)
-            phobs <- getPhonObs(hh)
-            ## function from Feldman 2009:
-            #Ncm <- sum(sapply(lh[[hh]][,1], function(x) {length(wk[[decodeZ(x,lexlab)]])}))
-            Ncm <- length(phobs)
-            mun <- ((nu0 * mu0) + (Ncm * mean(phobs))) / (nu0 + Ncm)
-            nun <- nu0 + Ncm
-            nusn <- nu0*s0 + sum((phobs-mean(phobs))^2) + nu0*Ncm/(nu0+Ncm)*(mean(phobs)-mu0)^2
-            lhoodii <- 1/(beta(nun/2,0.5)*sqrt(nusn*(1+nun)/nun)) *
-                (1 + (obs[ii]-mun)^2 / (nusn*(1+nun)/nun)) ^ (-(nun+1)/2)
-            lhood <- lhood*lhoodii
-        }
-        return(lhood)
-    }
-
-    ## compute the likelihood of assigning given observations to phoneme hh.  returns
-    ## the prior probability of the observations if hh=0.  returns log-likelihood if log=TRUE
-    phonlhood <- function(obs, hh=0, log=FALSE) {
-        if (hh==0 || Np[hh]==0) {phobs <- 0; Ncm <- 0}  # if prior specified or all obs held-out
-        else {phobs <- getPhonObs(hh); Ncm <- length(phobs)}
-        ## function from Feldman 2009
-        mun <- ((nu0 * mu0) + (Ncm * mean(phobs))) / (nu0 + Ncm)
-        nun <- nu0 + Ncm
-        nusn <- nu0*s0 + sum((phobs-mean(phobs))^2) + nu0*Ncm/(nu0+Ncm)*(mean(phobs)-mu0)^2
-        obsmean <- mean(obs)
-        n <- length(obs)
-        if(log==FALSE) {
-            lhood <- sqrt(nun/(n+nun)) / beta(nun/2, n/2) / nusn^(n/2) *
-                (1 + (sum((obs-obsmean)^2) + (obsmean-mun)^2*(n*nun)/(n+nun))/nusn) ^ (-(nun+n)/2)
-        } else {
-            lhood <- 0.5*(log(nun) - log(n+nun)) - lbeta(nun/2, n/2) - (n/2)*log(nusn) -
-                (nun+n)/2 * log(1 + (sum((obs-obsmean)^2) + (obsmean-mun)^2*(n*nun)/(n+nun))/nusn)
-        }
-        return(lhood)
-    }
-
-        
-
-    ## draw n new lexical items randomly
-    rlex <- function(num, len=1) {
-    matrix(phonlab[apply(rmultinom(num*len, 1, Np), 2, function(x){which(x==1)})],
-               ncol=len)
-    }
-
-    ## update the phoneme-->lexeme segment mappings, and return the list of new mappings
-    updateLh <- function(Lh, newlexeme, lexID) {
-        for (hh in 1:numphon) {
-            for (n in 1:length(newlexeme)) {
-                if (newlexeme[n] == phonlab[hh]) {Lh[[hh]] <- rbind(Lh[[hh]], c(lexID,n))}
-            }
-        }
-        return(Lh)
-    }
-
-    ## NOT SURE THAT THIS NEEDS TO BE DONE HERE....
-#    updateNp <- function(Np, newlexeme, oldlexeme) {
-#        Np + sapply(phonlab, function(p) {sum(newlexeme==p)}) - 
-#             sapply(phonlab, function(p) {sum(oldlexeme==p)})
-#    }
-
-    ## add a new, unique ID to a list of component labels, and return the list
-    updateIDs <- function(comps) {
-        return(append(comps, min(setdiff(1:(max(comps)+1), comps))))
-    }
-
-
-    ## takes a single entry from lh (aka lh[h]) and removes the entry corresponding
-    ## to position ii of lexical item kk
-    holdoutLh <- function(lhh, kk, ii) {
-        matrix(lhh[(lhh[,1]!=lexlab[kk] | lhh[,2]!=ii), ], ncol=2)
-    }
 
 }
+
+
+#####################################################################
+###                 HELPER FUNCTIONS                              ###
+#####################################################################
+
+## helper function to retrieve observations assigned to lexeme kk
+getLexObs <- function(kk) {
+    obs <- matrix(w[wk[[kk]],1:lexlen[kk]], ncol=lexlen[kk])
+    return(obs)
+}
+
+## helper function to get observations assigned to phoneme hh
+getPhonObs <- function(hh) {
+    obs <- unlist(apply(lh[[hh]],   # matrix of [lexID,i] rows
+                        1,          # "margainalize" over rows
+                        function(x) {w[wk[[decodeZ(x[1],lexlab)]], x[2]]}))
+                                        # index into w matrix, getting proper wk index
+                                        # using lexlab
+    return(obs)
+}
+
+## convert stable component labels (ID number) into vector index
+decodeZ <- function(z, lexlab) {
+    sapply(z, function(l) {which(lexlab==l)})
+}
+
+## calculate the likelihood of a single word observation given a class
+wordlhood <- function(obs, lexeme) {
+    lhood <- 1
+    for (ii in 1:length(lexeme)) {
+        hh <- decodeZ(lexeme[ii], phonlab)
+        phobs <- getPhonObs(hh)
+        ## function from Feldman 2009:
+                                        #Ncm <- sum(sapply(lh[[hh]][,1], function(x) {length(wk[[decodeZ(x,lexlab)]])}))
+        Ncm <- length(phobs)
+        if (Ncm < 1) {meanphobs <- 0}
+        else {meanphobs <- mean(phobs)}
+        mun <- ((nu0 * mu0) + (Ncm * meanphobs)) / (nu0 + Ncm)
+        nun <- nu0 + Ncm
+        nusn <- nu0*s0 + sum((phobs-meanphobs)^2) + nu0*Ncm/(nu0+Ncm)*(meanphobs-mu0)^2
+        lhoodii <- 1/(beta(nun/2,0.5)*sqrt(nusn*(1+nun)/nun)) *
+          (1 + (obs[ii]-mun)^2 / (nusn*(1+nun)/nun)) ^ (-(nun+1)/2)
+        lhood <- lhood*lhoodii
+    }
+    return(lhood)
+} 
+
+## compute the likelihood of assigning given observations to phoneme hh.  returns
+## the prior probability of the observations if hh=0.  returns log-likelihood if log=TRUE
+phonlhood <- function(obs, hh=0, log=FALSE) {
+    if (hh==0 || Np[hh]==0) {phobs <- 0; Ncm <- 0}  # if prior specified or all obs held-out
+    else {phobs <- getPhonObs(hh); Ncm <- length(phobs)}
+    ## function from Feldman 2009
+    mun <- ((nu0 * mu0) + (Ncm * mean(phobs))) / (nu0 + Ncm)
+    nun <- nu0 + Ncm
+    nusn <- nu0*s0 + sum((phobs-mean(phobs))^2) + nu0*Ncm/(nu0+Ncm)*(mean(phobs)-mu0)^2
+    obsmean <- mean(obs)
+    n <- length(obs)
+    if(log==FALSE) {
+        lhood <- sqrt(nun/(n+nun)) / beta(nun/2, n/2) / nusn^(n/2) *
+          (1 + (sum((obs-obsmean)^2) + (obsmean-mun)^2*(n*nun)/(n+nun))/nusn) ^ (-(nun+n)/2)
+    } else {
+        lhood <- 0.5*(log(nun) - log(n+nun)) - lbeta(nun/2, n/2) - (n/2)*log(nusn) -
+          (nun+n)/2 * log(1 + (sum((obs-obsmean)^2) + (obsmean-mun)^2*(n*nun)/(n+nun))/nusn)
+    }
+    return(lhood)
+}
+
+
+
+## draw n new lexical items randomly
+rlex <- function(num, len=1) {
+    matrix(phonlab[apply(rmultinom(num*len, 1, Np), 2, function(x){which(x==1)})],
+           ncol=len)
+}
+
+## update the phoneme-->lexeme segment mappings, and return the list of new mappings
+updateLh <- function(Lh, newlexeme, lexID) {
+    for (hh in 1:numphon) {
+        for (n in 1:length(newlexeme)) {
+            if (newlexeme[n] == phonlab[hh]) {Lh[[hh]] <- rbind(Lh[[hh]], c(lexID,n))}
+        }
+    }
+    return(Lh)
+}
+
+## NOT SURE THAT THIS NEEDS TO BE DONE HERE....
+updateNp <- function(Np, newlexeme) {
+    Np + sapply(phonlab, function(p) {sum(newlexeme==p)})
+}
+
+## add a new, unique ID to a list of component labels, and return the list
+updateIDs <- function(comps) {
+    return(append(comps, min(setdiff(1:(max(comps)+1), comps))))
+}
+
+
+## takes a single entry from lh (aka lh[h]) and removes the entry corresponding
+## to position ii of lexical item kk
+holdoutLh <- function(lhh, kk, ii) {
+    matrix(lhh[(lhh[,1]!=lexlab[kk] | lhh[,2]!=ii), ], ncol=2)
+}
+
+ltolh <- function(l, lh, phonlab, lexlab, lexlen) {
+    LH <- vector("list", numphon)
+    for (hh in 1:numphon) {
+        for (kk in 1:numlex) {
+            matches <- which(l[[kk]] == phonlab[hh])
+            LH[[hh]] <- rbind(LH[[hh]], cbind(rep(lexlab[kk],length(matches)), matches))
+        }
+    }
+}
+
+
+
