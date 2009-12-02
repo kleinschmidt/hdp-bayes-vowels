@@ -2,8 +2,12 @@ HDP-BAYES-VOWELS
 
 Ultimately, this will be an implementation of Feldman et al.'s (2009) hierarchical DP model of phonetic/lexical learning.
 
-Right now, it's some warm-up stuff:
+lex_hdp.r -- code for iterating the lexical-HDP model.
+fledman2009.r -- code to set-up and run the 1-D tests from the paper
+
+Some warm-up stuff, if you're curious:
   finiteNormMixtureGibbs.r -- Gibbs sampler for a FMM Gaussian model of arbitrary dimensions
   dpNormMixtureGibbs.r -- Gibbs sampler for a DP Guassian Mixture model.  This needs to be updated to sample
       from the conditional posteriors for the prior parameters on the component means/covariances, etc.
   rasmussen2000.r -- Functions/distributions from the Rasmussen (2000) paper on DP as the infinite limit of FMMs
+
