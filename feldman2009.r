@@ -7,7 +7,47 @@
 ### Toy 1d model ###############################################################
 ################################################################################
 
-mu0 <- array(data=c(-5, -1, 1, 5), dim=c(4,1))
-n0 <- c(400, 200, 200, 400)
-s0 <- array(data=c(1,1,1,1), dim=c(1,1,4))
+## generate observations from a lexical item
+lexgen <- function(n, lexeme, phonlab, mu, s, width=0) {
+    nc <- max(width, length(lexeme))
+    output <- matrix(rep(NA, n*nc), ncol=nc)
+    for (p in 1:length(lexeme)) {
+        phon <- which(phonlab==lexeme[p])
+        output[,p] <- rnorm(n, mean=mu[phon], sd=sqrt(s[phon]))
+    }
+    return(output)
+}
 
+makeW <- function(l, Nl) {
+    phonlab <- c(1,2,3,4)
+    numphon <- 4
+
+    phonmeans <- c(-5, -1, 1, 5)
+    phonvar <- c(1,1,1,1)
+
+    lexlen <- sapply(l, length)
+
+    w <- NULL
+    for(n in 1:length(l)) {
+        w <- rbind(w, lexgen(Nl[n], l[[n]], phonlab, phonmeans, phonvar, max(lexlen)))
+    }
+    return(w)
+}
+
+lnoMinPairs <- list(c(1,2), c(4,3), c(1,4,1), 4)
+NlnoMinPairs <- c(200, 200, 100, 100)
+
+w_noMinPairs <- makeW(lnoMinPairs, NlnoMinPairs)
+
+
+lminPairs <- list(c(1,2), c(4,2), c(1,3), c(4,3), c(1,4,1), c(4))
+NlminPairs <- rep(100, 6)
+
+w_minPairs <- makeW(lminPairs, NlminPairs)
+
+source("lex_hdp.r")
+
+#cat("----------------------- 1-D model with no minimum pairs -----------------------------")
+#ms_noMinPairs <- lexhdp(w_noMinPairs, nIter=30)
+#cat("------------------------ 1-D model with minimum pairs -------------------------------")
+#ms_minPairs <- lexhdp(w_minPairs, nIter=30)
