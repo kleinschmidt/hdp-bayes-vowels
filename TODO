@@ -1,0 +1,9 @@
+lex_hdp_2d.r
+  multivariate-t distribution -- implement?
+  convert w[] array to 3-D
+    update getPhon/LexObs functions
+  multivariate-normal distribution for sampling from phonemes/lexemes
+  update:
+    wordlhood
+    phonlhood
+    (anything that uses obs)
