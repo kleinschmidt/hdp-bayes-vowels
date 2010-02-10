@@ -293,6 +293,18 @@ phonlhood <- function(obs, hh=0, log=FALSE, Np, lh, w, wk, lexlab, mu0, nu0, s0)
     return(lhood)
 }
 
+## work likelihood for multidimensional data (each observation has >1 dimensions)
+mwordlhood <- function() {}
+
+## multivariate gamma function
+mgamma <- function(x, d, log=FALSE) {
+  out = 0.25*d*(d-1) * log(pi) + sapply(x, function(x) sum(lgamma(x - seq(0,d-1)/2)))
+  if (log) return(out)
+  else return(exp(out))
+}
+
+mlgamma <- function(x, d) {mgamma(x,d,log=TRUE)}
+
 
 
 ## draw n new lexical items randomly

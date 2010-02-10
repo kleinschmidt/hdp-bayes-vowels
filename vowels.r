@@ -1,3 +1,5 @@
+library(mvtnorm)
+
 ## "data structures"
 ## observed words:
 ## w[d,i,j]     value of dimension d at position i of word j (NULL entires for short words)

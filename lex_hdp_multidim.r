@@ -1,8 +1,10 @@
 ## LEX_HDP.R -- functions to simulate from a lexical-distributional learner as described
 ## by Feldman et al. 2009
 
+library(mvtnorm)
 
-lexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=0, s0=1, nu0=1.001, OUTPUT="FULL") {
+
+mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=diag(dim(w)[1]), nu0=1.001, OUTPUT="FULL") {
     ## "data structures"
     ## observed words:
     ## w[d,i,j]     value of dimension d at position i of word j (NULL entires for short words)
@@ -51,12 +53,12 @@ lexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=0, s0=1, nu0=1.001, OU
 
     modelState <- vector("list", nIter)
     
-
     for (iter in 1:nIter) {
         cat("ITERATION NUMBER", iter, "\n")
         ## first sweep: update word labels
         ## for each word in w:
         for (jj in 1:numwords) {
+            cat('.')
             ## hold-out w:
             ## get value for jjth word
             kkz <- decodeZ(z[jj], lexlab)
@@ -72,28 +74,31 @@ lexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=0, s0=1, nu0=1.001, OU
             } else {
                 heldOutLastObs <- FALSE
             }
-                
+            
 
             ## calculate likelihoods:
-            probs <- vector("numeric", numlex+r)
+            llhoods <- rep(-Inf, numlex+r)
             ## for each lexeme in l:
             for (kk in 1:numlex) {
                 if(lexlen[kk]==lexlen[kkz]) {
                     ## get the observed words associated with k
                     ##lexObs <- w[wk[[kk]],1:lexlen[kk]]
-                    ## calculate/store the likelihood(obs given lexObs)
-                    probs[kk] <- wordlhood(obs, l[[kk]], phonlab, lh, w, wk, lexlab, mu0, nu0, s0)
+                    ## calculate/store the log-likelihood(obs given lexObs)
+                    llhoods[kk] <- mwordlhood(obs, l[[kk]], phonlab, lh, w, wk, lexlab, mu0, nu0, s0)
+                    #probs[kk] <- wordlhood(obs, l[[kk]], phonlab, lh, w, wk, lexlab, mu0, nu0, s0)
                 }
             }
             ## calculate/store the prior prob of obs
             newlexemes <- rlex(r, len=lexlen[kkz], phonlab, Np)
             #print(newlexemes)
-            probs[(1:r)+numlex] <- apply(newlexemes, 1,
-                                         function(l) {wordlhood(obs, l, phonlab, lh, w, wk, lexlab, mu0, nu0, s0)})
+            llhoods[(1:r)+numlex] <- apply(newlexemes, 1,
+                                           function(lex) {mwordlhood(obs, lex, phonlab, lh, w, wk, lexlab, mu0, nu0, s0)})
             
-            ## multiply by Ns/beta
+            ## find log-posterior by adding log-priors (Ns and beta) to normalized log-likelihood
+            lprior = log(c(Nl,rep(Beta/(r+heldOutLastObs),r)))
+            lpost = llhoods - max(llhoods) + lprior
             ## sample new p from multinomial distribution
-            newkk <- which(rmultinom(1, 1, probs*c(Nl,rep(Beta/(r+heldOutLastObs),r)))==1)
+            newkk <- which(rmultinom(1, 1, exp(lpost))==1)
 
             ## correct for treating a totally held out component as unexpressed
             if (heldOutLastObs) {Nl[kkz] <- 0}
@@ -150,14 +155,17 @@ lexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=0, s0=1, nu0=1.001, OU
             
         } ## end: first sweep
 
+        cat("\n")
 
         ## second sweep: update lexical segment labels
         ## for each segment in each lexical item:
         for (kk in 1:numlex) {
-            lexobs <- getLexObs(kk, lexlen, w, wk)
+            cat(":")
+            #lexobs <- getLexObs(kk, lexlen, w, wk)
             for (ii in 1:length(l[[kk]])) {
                 ## get the observations associated with this segment
-                obs <- lexobs[,ii]
+                #obs <- lexobs[,ii]
+                obs = as.matrix(w[ , ii, wk[[kk]] ], nrow=dims)
                 
                 ## hold out these observations
                 hhl <- decodeZ(l[[kk]][ii], phonlab)
@@ -167,11 +175,9 @@ lexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=0, s0=1, nu0=1.001, OU
                 ## get the probability for each phone category and the prior
                 ## use log lhood because of the higher sample sizes... 
                 probs <- sapply(c(1:numphon, 0),
-                                function(h) phonlhood(obs, h, log=TRUE, Np, lh, w, wk, lexlab, mu0, nu0, s0))
-                ## multiply by Ns/alpha
-                probs <- probs - max(probs) + log(c(Np, Alpha))
-                ## sample new p from multinomial distro
-                newhh <- which(rmultinom(n=1, size=1, prob=exp(probs))==1)
+                                function(h) mphonlhood(obs, h, log=TRUE, Np, lh, w, wk, lexlab, mu0, nu0, s0))
+                ## sample new p from multinomial with appropriate posterior probabilities.
+                newhh <- which(rmultinom(n=1, size=1, prob=exp(probs-max(probs))*c(Np,Alpha))==1)
 
                 ## update labels/counts
                 if (newhh > numphon) {
@@ -219,6 +225,7 @@ lexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=0, s0=1, nu0=1.001, OU
         }
     } ## end: one iteration
 
+
     
     return(modelState)
     
@@ -242,8 +249,8 @@ getPhonObs <- function(hh, lh, w, wk, lexlab) {
     obs <- unlist(apply(lh[[hh]],   # matrix of [lexID,i] rows
                         1,          # "margainalize" over rows
                         function(x) {w[wk[[decodeZ(x[1],lexlab)]], x[2]]}))
-                                        # index into w matrix, getting proper wk index
-                                        # using lexlab
+    # index into w matrix, getting proper wk index
+    # using lexlab
     
     return(obs)
 }
@@ -273,58 +280,64 @@ wordlhood <- function(obs, lexeme, phonlab, lh, w, wk, lexlab, mu0, nu0, s0) {
         lhood <- lhood*lhoodii
     }
     return(lhood)
-} 
+}
 
 ## convert summary statistics for a phonetic category for use in calculating likelihood
 phonstats <- function(hh, lh, w, wk, lexlab, mu0, nu0, s0) {
-  # for each expression of this phoneme
+    # if hh is 0, or length(lh[[hh]])==0, return prior cat stats...
+    if (hh==0 || nrow(lh[[hh]])==0) {
+        return(list(nuN=nu0, muN=mu0, sigmaN=s0))
+    }
+    # otherwise, compute summary statistics of category examples
+    # theoretically, this will produce a dims-by-Ncm matrix of observations for this phone
+    phonObs = matrix(unlist(apply(lh[[hh]], 1, function(x) {w[ , x[2], wk[[decodeZ(x[1],lexlab)]] ]} )), nrow=dims)
+    # need to compute mean, number, and variance
+    pnum = nrow(lh[[hh]]) # ncol(phonObs) -- use type count vs. token count
+    pmean = rowMeans(phonObs)
+    pcov = matrix(rowSums(apply(phonObs, 2, function(ob) {(ob-pmean) %*% t(ob-pmean)})), dims)
 
-  # theoretically, this will produce a dims-by-Ncm matrix of observations for this phone
-  phonObs = matrix(unlist(apply(lh[[hh]], 1, function(x) {w[ , x[2], wk[[decodeZ(x[1],lexlab)]] ]} )), nrow=dims)
-  # need to compute mean, number, and variance
-  pnum = ncol(phonObs)
-  pmean = rowMeans(phonObs)
-  pcov = matrix(rowSums(apply(phonObs, 2, function(ob) {(ob-pmean) %*% t(ob-pmean)})), dims)
+    pcov = s0 + pcov + nu0*pnum / (nu0+pnum) * (pmean-mu0) %*% t(pmean-mu0)
+    pmean = (nu0*mu0 + pnum*pmean) / (nu0 + pnum)
+    pnum = nu0 + pnum
 
-  pcov = s0 + pcov + nu0*pnum / (nu0+pnum) * (pmean-mu0) %*% t(pmean-mu0)
-  pmean = (nu0*mu0 + pnum*pmean) / (nu0 + pnum)
-  pnum = nu0 + pnum
-
-  return(list(nuN = pnum, muN = pmean, sigmaN = pcov))
+    return(list(nuN = pnum, muN = pmean, sigmaN = pcov))
 }
 
-## word likelihood for multidimensional data (each observation has >1 dimensions)
+## word log-likelihood for multidimensional data (each observation has >1 dimensions)
 mwordlhood <- function(obs, lexeme, phonlab, lh, w, wk, lexlab, mu0, nu0, s0) {
-  llhood = 0
-  obs = as.matrix(obs)
-  for (ii in 1:length(lexeme)) {
-    hh = decodeZ(lexeme[ii], phonlab)
-    catstats = phonstats(hh, lh, w, wk, lexlab, mu0, nu0, s0)
-    llhood = llhood + with(catstats, mydmvt(obs[,ii], mu=muN, sigma=sigmaN, nu=nuN, d=dims, log=TRUE))
-  }
-  return(llhood)
+    llhood = 0
+    obs = as.matrix(obs)
+    for (ii in 1:length(lexeme)) {
+        hh = decodeZ(lexeme[ii], phonlab)
+        catstats = phonstats(hh, lh, w, wk, lexlab, mu0, nu0, s0)
+        llhood = llhood + with(catstats, dmvtOneObs(obs[,ii], mu=muN, sigma=sigmaN, nu=nuN, log=TRUE))
+    }
+    return(llhood)
 }
 
-mydmvt <- function(x, mu, sigma, nu, d, log=FALSE) {
-  x = as.matrix(x)
-  logdf = function(X) {lgamma((nu+1)/d) - lgamma((nu+1-d)/2) - log(det(pi*sigma*(nu+1)/nu))/2 -
-                         (nu+1)/2 * log(1 + t(X-mu) %*% solve(sigma*(nu+1)/nu) %*% (X-mu))}
-  dens = apply(x, 2, logdf)
-  if (log) return(dens)
-  else return(exp(dens))
+## multivariate-t-esque density function (for a single observation at a time)
+dmvtOneObs <- function(x, mu, sigma, nu, log=FALSE) {
+    x = as.matrix(x)
+    d = nrow(x)
+    logdf = function(X) {lgamma((nu+1)/d) - lgamma((nu+1-d)/2) - log(det(pi*sigma*(nu+1)/nu))/2 -
+                           (nu+1)/2 * log(1 + t(X-mu) %*% solve(sigma*(nu+1)/nu) %*% (X-mu))}
+    dens = apply(x, 2, logdf)
+    if (log) return(dens)
+    else return(exp(dens))
 }
 
 ## multivariate gamma function
 mgamma <- function(x, d, log=FALSE) {
-  out = 0.25*d*(d-1) * log(pi) + sapply(x, function(x) sum(lgamma(x - seq(0,d-1)/2)))
-  if (log) return(out)
-  else return(exp(out))
+    out = 0.25*d*(d-1) * log(pi) + sapply(x, function(x) sum(lgamma(x - seq(0,d-1)/2)))
+    if (log) return(out)
+    else return(exp(out))
 }
 
-mlgamma <- function(x, d) {mgamma(x,d,log=TRUE)}
-  
-  
-  
+## log-multivariate gamma function
+mlgamma <- function(x, d) {
+    mgamma(x,d,log=TRUE)
+}
+
 
 
 ## compute the likelihood of assigning given observations to phoneme hh.  returns
@@ -348,12 +361,37 @@ phonlhood <- function(obs, hh=0, log=FALSE, Np, lh, w, wk, lexlab, mu0, nu0, s0)
     return(lhood)
 }
 
+## likelihood function for observations from a multivariate phonetic category
+mphonlhood <- function(obs, hh=0, log=FALSE, Np, lh, w, wk, lexlab, mu0, nu0, s0) {
+    catstats = phonstats(hh, lh, w, wk, lexlab, mu0, nu0, s0)
+    llhood = with(catstats, dmvtMultObs(as.matrix(obs), mu=muN, sigma=sigmaN, nu=nuN, log=TRUE))
+    if (log) {return(llhood)}
+    else {return(exp(llhood))}
+}
 
+## multivariate-t-esque density function (joint density of multiple observations)
+dmvtMultObs <- function(obs, mu, sigma, nu, log=FALSE) {
+    # obs is of a dim-by-obs matrix
+    obsmean = rowMeans(obs)
+    n = ncol(obs)
+    d = nrow(obs)
+    obsmatrix = sigma + mycov(obs,n,d) + (n*nu)/(n+nu)*(obsmean-mu)%*%t(obsmean-mu)
+    logp = mlgamma((nu+n)/2, d) + (nu/2)*log(det(sigma)) -
+      (mlgamma(nu/2, d) + (d*n/2)*log(pi) + (d/2)*(log(n+nu) - log(nu))) -
+        (nu+n)/2*log(det(obsmatrix))
+    if (log) {return(logp)}
+    else {return(exp(logp))}
+}
+
+mycov <- function(x, n, d) {
+    if (n > 1) return(cov(t(x))*(n-1))
+    else return(diag(0, d))
+}
 
 
 ## draw n new lexical items randomly
 rlex <- function(num, len=1, phonlab, Np) {
-                                        #print(phonlab)
+    #print(phonlab)
     matrix(phonlab[apply(rmultinom(num*len, 1, Np), 2, function(x){which(x==1)})],
            ncol=len)
 }
@@ -395,4 +433,8 @@ ltolh <- function(l, lh, phonlab, lexlab, lexlen) {
     }
 }
 
+# remove NAs and plot the first two dimensions of w
+plotw2d = function(w) {
+    plot(t(matrix(w[!is.na(w)], nrow=nrow(w))[1:2,]))
+}
 
