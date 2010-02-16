@@ -1,19 +1,29 @@
 from numpy import *
+from collections import deque
 
-class Phones:
-    def __init__(self):
-        self.phones = []
+class Lex:
 
-    def addPhone(self, lex, pos):
-        self.phones.append( (lex,pos) )
-
-    # remove empty phoneme entries
-    def clean(self):
-        for p in self.phones:
-            if len(p) == 0:
-                self.phones.remove(p)
+class Phon:
 
 class Lexicon:
-    def __init__(self):
-        self.lex = []
-        self.obs = array( [] )
+    def __init__(self, obs):
+        self.lexs = deque( [] )
+        self.obs = obs
+    def iterate(self, ntimes):
+        for n in range(ntimes):
+            pass
+
+
+
+
+class Phonicon:
+
+class Observations:
+    def __init__(self, obs):
+        self.obs = obs
+    def getObs(self, rows, cols):
+        assert min(map(lambda r: obs[r]
+        res = []
+        for r in rows:
+            for c in cols:
+                res.append(self.obs[r][c]) 

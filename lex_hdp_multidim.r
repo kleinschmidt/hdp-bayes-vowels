@@ -4,7 +4,9 @@
 library(mvtnorm)
 
 
-mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=diag(dim(w)[1]), nu0=1.001, OUTPUT="FULL") {
+mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1,
+                    mu0=rep(0,dim(w)[1]), s0=diag(dim(w)[1]), nu0=1.001,
+                    OUTPUT="FULL", seed=0) {
     ## "data structures"
     ## observed words:
     ## w[d,i,j]     value of dimension d at position i of word j (NULL entires for short words)
@@ -31,6 +33,12 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=
     ## Beta         concnetration parameter for lexicon
     ## r            number of new samples to draw to estimate prior propability
 
+    ## before doing anything, print the random seed, so that if we need to re-run we can
+    if (seed!=0) {
+        set.seed(seed)
+    }
+    cat("Random seed:", .Random.seed, "\n")
+
     ## initialize phone/lexeme inventories
     z <- apply(w[1,,], 2, function(x) {sum(!is.na(x))})
     numwords <- dim(w)[3]
@@ -38,6 +46,7 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=
     lexlab <- unique(z)
     lexlen <- lexlab          # okay since z is chosen to be length
     numlex <- length(lexlab)
+    nextLexLab = numlex+1
 
     l <- lapply(lexlen, function(x) {rep(1, x)})
     Nl <- sapply(lexlab, function(x) {sum(z==x)})
@@ -45,6 +54,7 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=
 
     phonlab <- 1
     numphon <- 1
+    nextPhonLab = numphon+1
     dims <- nrow(w)
     Np <- sum(lexlen)
     lh <- list(cbind(unlist(lapply(1:numlex, function(x) {rep(lexlab[x],lexlen[x])})),
@@ -55,10 +65,10 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=
     
     for (iter in 1:nIter) {
         cat("ITERATION NUMBER", iter, "\n")
+        seedTrialInit = .Random.seed
         ## first sweep: update word labels
         ## for each word in w:
         for (jj in 1:numwords) {
-            cat('.')
             ## hold-out w:
             ## get value for jjth word
             kkz <- decodeZ(z[jj], lexlab)
@@ -107,14 +117,17 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=
             if (newkk > numlex) {
                 ## new component
                 ## generate a new comp ID
-                lexlab <- updateIDs(lexlab)
-                newID <- tail(lexlab,1)
+                #lexlab <- updateIDs(lexlab)
+                #newID <- tail(lexlab,1)
+                newID = nextLexLab
+                lexlab = c(lexlab, newID)
+                nextLexLab = nextLexLab + 1
                 ## store the new sampled lexeme
                 newlex <- newlexemes[newkk-numlex, ]
                 l[[numlex+1]] <- newlex
                 cat("  Adding new lexeme with ID ", newID,
                     " (word number ", jj, ")\n", sep="")
-                cat("    l[", numlex, "] =", newlex, "\n", sep=" ")
+                cat("    l[", numlex+1, "] =", newlex, "\n", sep=" ")
                 ## update phoneme->segment mappings and counts
                 
                 lh <- updateLh(lh, newlex, newID, numphon, phonlab)
@@ -134,6 +147,9 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=
 
             ## record the new label
             z[jj] <- newID
+            ## and print some output
+            #cat('(', newID, ') ', sep='')
+            if (jj %% floor(numwords/10) == 0) cat("  ...\n")
 
             ## check to see if the old lexeme is empty, and delete it if so
             if (Nl[kkz] == 0) {
@@ -143,7 +159,7 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=
                 for (hh in decodeZ(unique(l[[kkz]]), phonlab)) {
                     lh[[hh]] <- matrix(lh[[hh]] [lh[[hh]][,1] != lexlab[kkz], ], ncol=2)
                 }
-                Np <- Np - apply(sapply(l[[kkz]], function(p) {phonlab==p}), 1, sum)
+                Np <- Np - sum(sapply(l[[kkz]], function(p) {phonlab==p}))
                 lexlab <- lexlab[-kkz]
                 lexlen <- lexlen[-kkz]
                 numlex <- numlex - 1
@@ -160,7 +176,6 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=
         ## second sweep: update lexical segment labels
         ## for each segment in each lexical item:
         for (kk in 1:numlex) {
-            cat(":")
             #lexobs <- getLexObs(kk, lexlen, w, wk)
             for (ii in 1:length(l[[kk]])) {
                 ## get the observations associated with this segment
@@ -183,8 +198,11 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=
                 if (newhh > numphon) {
                     ## new component
                     ## generate new ID
-                    phonlab <- updateIDs(phonlab)
-                    newID <- tail(phonlab,1)
+                    #phonlab <- updateIDs(phonlab)
+                    #newID <- tail(phonlab,1)
+                    newID = nextPhonLab
+                    phonlab = c(phonlab, newID)
+                    nextPhonLab = nextPhonLab + 1
                     numphon <- numphon + 1
                     ## record the new ID
                     Np[newhh] <- 1
@@ -200,6 +218,8 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=
 
                 ## record new label
                 l[[kk]] [ii] <- newID
+                ## print a little output to keep our hopes up
+                #cat('[', newID, '] ', sep='')
 
                 ## remove old comp if it's empty
                 if (Np[hhl] == 0) {
@@ -218,11 +238,13 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=rep(0,dim(w)[1]), s0=
         if (OUTPUT=="FULL") {
             modelState[[iter]] <-
               list(z=z, lexlab=lexlab, lexlen=lexlen, numlex=numlex, l=l, Nl=Nl, wk=wk,
-                   phonlab=phonlab, numphon=numphon, Np=Np, lh=lh, Alpha=Alpha, Beta=Beta, r=r)
+                   phonlab=phonlab, numphon=numphon, Np=Np, lh=lh, Alpha=Alpha, Beta=Beta, r=r, seed=seedTrialInit)
         } else {
             modelState[[iter]] <-
               list(z=z, l=l)
         }
+
+        plotEllipses(w, z, l, lexlab, phonlab)
     } ## end: one iteration
 
 
@@ -262,7 +284,7 @@ decodeZ <- function(z, lexlab) {
 
 
 ## calculate the likelihood of a single word observation given a class
-wordlhood <- function(obs, lexeme, phonlab, lh, w, wk, lexlab, mu0, nu0, s0) {
+wordlhood <- function(obs, lexeme, phonlab, lh, w, wk, lexlab, mu0, nu0, s0, log="FALSE") {
     lhood <- 1
     for (ii in 1:length(lexeme)) {
         hh <- decodeZ(lexeme[ii], phonlab)
@@ -277,6 +299,7 @@ wordlhood <- function(obs, lexeme, phonlab, lh, w, wk, lexlab, mu0, nu0, s0) {
         nusn <- nu0*s0 + sum((phobs-meanphobs)^2) + nu0*Ncm/(nu0+Ncm)*(meanphobs-mu0)^2
         lhoodii <- 1/(beta(nun/2,0.5)*sqrt(nusn*(1+nun)/nun)) *
           (1 + (obs[ii]-mun)^2 / (nusn*(1+nun)/nun)) ^ (-(nun+1)/2)
+        #lhoodii = 
         lhood <- lhood*lhoodii
     }
     return(lhood)
@@ -290,11 +313,14 @@ phonstats <- function(hh, lh, w, wk, lexlab, mu0, nu0, s0) {
     }
     # otherwise, compute summary statistics of category examples
     # theoretically, this will produce a dims-by-Ncm matrix of observations for this phone
+    dims = dim(w)[1]
     phonObs = matrix(unlist(apply(lh[[hh]], 1, function(x) {w[ , x[2], wk[[decodeZ(x[1],lexlab)]] ]} )), nrow=dims)
     # need to compute mean, number, and variance
-    pnum = nrow(lh[[hh]]) # ncol(phonObs) -- use type count vs. token count
+    ##pnum = nrow(lh[[hh]]) ## type count
+    pnum = ncol(phonObs) ## token count
     pmean = rowMeans(phonObs)
-    pcov = matrix(rowSums(apply(phonObs, 2, function(ob) {(ob-pmean) %*% t(ob-pmean)})), dims)
+    pcov = cov(t(phonObs))*(pnum-1) ## use built in function...
+    ##pcov = matrix(rowSums(apply(phonObs, 2, function(ob) {(ob-pmean) %*% t(ob-pmean)})), dims)
 
     pcov = s0 + pcov + nu0*pnum / (nu0+pnum) * (pmean-mu0) %*% t(pmean-mu0)
     pmean = (nu0*mu0 + pnum*pmean) / (nu0 + pnum)
@@ -306,7 +332,7 @@ phonstats <- function(hh, lh, w, wk, lexlab, mu0, nu0, s0) {
 ## word log-likelihood for multidimensional data (each observation has >1 dimensions)
 mwordlhood <- function(obs, lexeme, phonlab, lh, w, wk, lexlab, mu0, nu0, s0) {
     llhood = 0
-    obs = as.matrix(obs)
+    obs = matrix(obs, nrow=nrow(w))
     for (ii in 1:length(lexeme)) {
         hh = decodeZ(lexeme[ii], phonlab)
         catstats = phonstats(hh, lh, w, wk, lexlab, mu0, nu0, s0)
@@ -438,3 +464,26 @@ plotw2d = function(w) {
     plot(t(matrix(w[!is.na(w)], nrow=nrow(w))[1:2,]))
 }
 
+plotEllipses <- function(w, z, l, lexlab, phonlab) {
+    palette(c("red", "green3", "blue", "cyan", "magenta", "yellow"))
+    plotChars <- c(1, 2, 5, 6)
+
+    pts = matrix(w[!is.na(w)], nrow=nrow(w))[1:2,]
+    phlabs = unlist(lapply(z, function(zz) {l[[which(lexlab==zz)]]}))
+
+    # initialize the plot
+    plot(t(pts), type="n")
+    
+    for (label in phonlab) {
+        ppts = as.matrix(pts[, phlabs==label], nrow=nrow(pts))
+        color = (label-1)%%length(palette()) + 1
+        if (dim(ppts)[2]==1) {
+            covar = diag(0,2)
+        } else {
+            covar = cov(t(ppts))
+        }
+        mu = rowMeans(ppts)
+        points(ppts[1,], ppts[2,], pch=plotChars[ceiling(label/length(palette()))], col=color)
+        lines(ellipse(x=covar, centre=mu), col=color)
+    }
+}
