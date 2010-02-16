@@ -32,10 +32,10 @@ plotChars <- c(1, 2, 5, 6)
 comp2dplot <- function(pts, labels, comps, means, precisions) {
   plot(pts, type="n")
   for (co in comps) {
-    ppts <- pts[labels==co, ]
+    ppts <- pts[, labels==co]
     if (!is.matrix(ppts)) {ppts <- matrix(ppts, length(ppts)/2, 2)}
     color <- (co-1)%%length(palette()) + 1
-    points(ppts[,1], ppts[,2],
+    points(ppts[1,], ppts[2,],
            pch=plotChars[ceiling(co/length(palette()))],
            col=color)
     lines(ellipse(x=solve(precisions[1:2,1:2,which(comps==co)]),
@@ -43,3 +43,9 @@ comp2dplot <- function(pts, labels, comps, means, precisions) {
           col=color)
   }
 }
+
+# remove NAs, flatten, and plot the first two dimensions of w
+plotw2d <- function(w) {
+    plot(t(matrix(w[!is.na(w)], nrow=nrow(w))[1:2,]))
+}
+
