@@ -289,7 +289,7 @@ wordlhood <- function(obs, lexeme, phonlab, lh, w, wk, lexlab, mu0, nu0, s0, log
     for (ii in 1:length(lexeme)) {
         hh <- decodeZ(lexeme[ii], phonlab)
         phobs <- getPhonObs(hh, lh, w, wk, lexlab)
-        ## function from Feldman 2009:
+        ## function from Feldman 2009: 
         #Ncm <- sum(sapply(lh[[hh]][,1], function(x) {length(wk[[decodeZ(x,lexlab)]])}))
         Ncm <- length(phobs)
         if (Ncm < 1) {meanphobs <- 0}
