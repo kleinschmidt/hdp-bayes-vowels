@@ -149,7 +149,7 @@ mlexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1,
             z[jj] <- newID
             ## and print some output
             #cat('(', newID, ') ', sep='')
-            if (jj %% floor(numwords/10) == 0) cat("  ...\n")
+            if (jj %% floor(numwords/10) == 0) cat(" ", jj, "...\n")
 
             ## check to see if the old lexeme is empty, and delete it if so
             if (Nl[kkz] == 0) {

@@ -40,14 +40,29 @@ NlnoMinPairs <- c(200, 200, 100, 100)
 w_noMinPairs <- makeW(lnoMinPairs, NlnoMinPairs)
 
 
-lminPairs <- list(c(1,2), c(4,2), c(1,3), c(4,3), c(1,4,1), c(4))
+lminPairs <- list(c(1,2), c(1,3), c(4,2), c(4,3), c(1,4,1), c(4))
 NlminPairs <- rep(100, 6)
 
 w_minPairs <- makeW(lminPairs, NlminPairs)
 
+
+Nlprobsparse = c(175, 25, 25, 175, 100, 100)
+w_probSparse = makeW(lminPairs, Nlprobsparse)
+
 source("lex_hdp.r")
 
-#cat("----------------------- 1-D model with no minimum pairs -----------------------------")
-#ms_noMinPairs <- lexhdp(w_noMinPairs, nIter=30)
-#cat("------------------------ 1-D model with minimum pairs -------------------------------")
-#ms_minPairs <- lexhdp(w_minPairs, nIter=30)
+cat("----------------------- 1-D model with probabilistic sparseness ---------------------")
+ms_probSparse <- lexhdp(w_probSparse, nIter=30)
+
+cat("----------------------- 1-D model with no minimum pairs -----------------------------")
+ms_noMinPairs <- lexhdp(w_noMinPairs, nIter=30)
+cat("------------------------ 1-D model with minimum pairs -------------------------------")
+ms_minPairs <- lexhdp(w_minPairs, nIter=30)
+
+save(list=ls(all=TRUE), file='1dsparseness.RData')
+
+
+################################################################################
+## test different mixtures of words...##########################################
+################################################################################
+
