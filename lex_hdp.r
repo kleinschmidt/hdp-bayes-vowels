@@ -216,6 +216,14 @@ lexhdp <- function(w, nIter=10, r=5, Alpha=1, Beta=1, mu0=0, s0=1, nu0=1.001, OU
             modelState[[iter]] <-
               list(z=z, l=l)
         }
+
+        cat("  Lexicon: \n")
+        for (lab in 1:length(lexlab)) {
+            cat("    ", lexlab[lab], ": "); print(l[[lab]])
+        }
+        cat("  Word labels: \n")
+        print(z)
+        
     } ## end: one iteration
 
     
