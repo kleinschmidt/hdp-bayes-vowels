@@ -64,8 +64,9 @@ source("lex_hdp.r")
 
 for (p in seq(.05,.45,.10)) {
     cat("----------------------- 1-D model with probabilistic sparseness of", p, " percent---------------------\n")
-    w = makeW(lminPairs, c(200*(1-p), 200*p, 200*p, 200*(1-p), 100, 100))
-    ms_probSparse[[(p+.05)/.1]] <- lexhdp(w, nIter=30)
+    Nl = c(200*(1-p), 200*p, 200*p, 200*(1-p), 100, 100)
+    w = makeW(lminPairs, Nl)
+    ms_probSparse[(p+.05)/.1] <- list(w=w, Nl=Nl, p=p, output=lexhdp(w, nIter=30))
     
     save(list=ls(all=TRUE), file='1dsparseness.RData')
 }
