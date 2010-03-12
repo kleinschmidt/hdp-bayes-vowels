@@ -61,13 +61,117 @@ source("lex_hdp.r")
 ## test different mixtures of words...##########################################
 ################################################################################
 
+test_sparseness <- function() {
+    minp = 0.05
+    startp = 0.05
+    maxp = 0.45
+    pstep = 0.10
 
-for (p in seq(.05,.45,.10)) {
-    cat("----------------------- 1-D model with probabilistic sparseness of", p, " percent---------------------\n")
-    Nl = c(200*(1-p), 200*p, 200*p, 200*(1-p), 100, 100)
-    w = makeW(lminPairs, Nl)
-    ms_probSparse[(p+.05)/.1] <- list(w=w, Nl=Nl, p=p, output=lexhdp(w, nIter=30))
-    
-    save(list=ls(all=TRUE), file='1dsparseness.RData')
+    ms_probSparse = vector("list", (maxp-minp)/pstep + 1)
+
+    for (p in seq(startp,maxp,pstep)) {
+        seed = .Random.seed
+        cat("----------------------- 1-D model with probabilistic sparseness of", p, " percent---------------------\n")
+        Nl = round(c(200*(1-p), 200*p, 200*p, 200*(1-p), 100, 100))
+        w = makeW(lminPairs, Nl)
+        output = lexhdp(w, nIter=30)
+        ms_probSparse[[round((p-minp)/pstep + 1)]] <- list(w=w, Nl=Nl, p=p, seed=seed, output=output)
+        
+        save(list="ms_probSparse", file='1dsparseness.RData')
+    }
 }
 
+################################################################################
+## ANALYSIS   ##################################################################
+################################################################################
+
+
+# extract a list of segment labels based on z and l for precision/recall analysis
+getposlabs <- function(z, l, lexlab) {
+    unlist(lapply(z, function(zz) l[[which(lexlab==zz)]]))
+}
+
+
+
+this = ms_probSparse[[3]]
+
+getHitsFAs <- function(df, ns=length(df$output), masks=NA) {
+    # get actual segment labels
+    baseNl = df$Nl
+    realposlabs = getposlabs( unlist(lapply(1:length(baseNl), function(N) rep(N, baseNl[N]))),
+        lminPairs,
+        1:length(Nl) )
+    # compute pairwise same-different
+    same = unlist(lapply(1:(len-1), function(N) {realposlabs[N]==realposlabs[(N+1):len]}))
+    if (!any(is.na(masks))) {
+        mask = unlist(lapply(1:(len-1),
+                      function(N) {any(realposlabs[N]==masks) |
+                                   sapply(realposlabs[(N+1):len], function(l) {any(l==masks)})}))
+    }
+        
+    len = length(obsposlabs)
+
+    if (any(ns<0)) {ns = 1:length(df$output)}
+    out = NULL
+    out.masked = NULL
+
+    cat('analyzing p =', df$p, ', n =')
+    for (n in ns) {
+        cat(n, ', ')
+        obsposlabs = with(df$output[[n]], getposlabs(z, l, lexlab))
+        resp = unlist(lapply(1:(len-1), function(N) {obsposlabs[N]==obsposlabs[(N+1):len]}))
+        
+        tab = xtabs(~same+resp, data.frame(same=same, resp=resp))
+        #print(tab)
+        out = rbind(out, data.frame(p=df$p, iter=n,
+                                    hits=tab['TRUE', 'TRUE'],
+                                    miss=tab['TRUE', 'FALSE'],
+                                    FAs =tab['FALSE', 'TRUE'],
+                                    rej =tab['FALSE', 'FALSE']))
+        if (!any(is.na(masks))) {
+            tab.masked = xtabs(~same+resp, data.frame(same=same[mask], resp=resp[mask]))
+            out.masked = rbind(out.masked, data.frame(p=df$p, iter=n,
+                hits=tab['TRUE', 'TRUE'],
+                miss=tab['TRUE', 'FALSE'],
+                FAs =tab['FALSE', 'TRUE'],
+                rej =tab['FALSE', 'FALSE']))
+        }
+    }
+    cat('\n')
+
+    return(list(full=out, masked=out.masked))
+}
+
+analyze_probSparse <- function(dfs) {
+    out = list(full=NULL, masked=NULL)
+    for (df in ms_probSparse) {
+        res = getHitsFAs(df, 1:length(df$output), c(2,3))
+        out$full = rbind(out$full, res$full)
+        out$masked = rbind(out$masked, res$masked)
+    }
+    return(out)
+}
+
+crunchHitsFAs <- function(res) {
+    res$acc = res$hits / (res$hits + res$FAs)
+    res$compl = res$hits / (res$hits + res$miss)
+    res$p = factor(res$p)
+
+    res.m = melt(res[,c('p', 'iter', 'acc', 'compl')], id=c('p', 'iter'))
+    p = ggplot(data=res.m, aes(x=iter, y=value))
+    p + geom_line() + facet_grid(variable ~ p)
+    return(res.m)
+}
+
+confusion_tables <- function(model) {
+    baseNl = model$Nl
+    realposlabs = getposlabs( unlist(lapply(1:length(baseNl), function(N) rep(N, baseNl[N]))),
+        lminPairs,
+        1:length(Nl) )
+    obsposlabs = with(model$output[[length(model$output)]], getposlabs(z, l, lexlab))
+    return(xtabs(~real+obs, data.frame(real=realposlabs, obs=obsposlabs)))
+}
+
+#full_analysis <- function() {
+#    analyze_probSparse(ms_probSparse)
+#    

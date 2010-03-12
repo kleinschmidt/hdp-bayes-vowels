@@ -360,3 +360,6 @@ ltolh <- function(l, lh, phonlab, lexlab, lexlen) {
 }
 
 
+flatten_phones <- function(w, z, lexlab) {
+    return(list(obs=t(w)[!is.na(t(w))], labels=unlist(lapply(z, function(n) {l[[which(lexlab==n)]]}))))
+}
