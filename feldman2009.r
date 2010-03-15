@@ -96,11 +96,15 @@ getposlabs <- function(z, l, lexlab) {
 this = ms_probSparse[[3]]
 
 getHitsFAs <- function(df, ns=length(df$output), masks=NA) {
+    cat('analyzing p = ', df$p, ', n = ', sep='')
+
     # get actual segment labels
     baseNl = df$Nl
     realposlabs = getposlabs( unlist(lapply(1:length(baseNl), function(N) rep(N, baseNl[N]))),
         lminPairs,
-        1:length(Nl) )
+        1:length(baseNl) )
+    len = length(realposlabs)
+
     # compute pairwise same-different
     same = unlist(lapply(1:(len-1), function(N) {realposlabs[N]==realposlabs[(N+1):len]}))
     if (!any(is.na(masks))) {
@@ -108,14 +112,11 @@ getHitsFAs <- function(df, ns=length(df$output), masks=NA) {
                       function(N) {any(realposlabs[N]==masks) |
                                    sapply(realposlabs[(N+1):len], function(l) {any(l==masks)})}))
     }
-        
-    len = length(obsposlabs)
 
     if (any(ns<0)) {ns = 1:length(df$output)}
     out = NULL
     out.masked = NULL
 
-    cat('analyzing p =', df$p, ', n =')
     for (n in ns) {
         cat(n, ', ')
         obsposlabs = with(df$output[[n]], getposlabs(z, l, lexlab))
@@ -131,15 +132,17 @@ getHitsFAs <- function(df, ns=length(df$output), masks=NA) {
         if (!any(is.na(masks))) {
             tab.masked = xtabs(~same+resp, data.frame(same=same[mask], resp=resp[mask]))
             out.masked = rbind(out.masked, data.frame(p=df$p, iter=n,
-                hits=tab['TRUE', 'TRUE'],
-                miss=tab['TRUE', 'FALSE'],
-                FAs =tab['FALSE', 'TRUE'],
-                rej =tab['FALSE', 'FALSE']))
+                hits=tab.masked['TRUE', 'TRUE'],
+                miss=tab.masked['TRUE', 'FALSE'],
+                FAs =tab.masked['FALSE', 'TRUE'],
+                rej =tab.masked['FALSE', 'FALSE']))
         }
     }
     cat('\n')
 
-    return(list(full=out, masked=out.masked))
+    confusions = xtabs(~real+obs, data.frame(real=realposlabs, obs=obsposlabs))
+    
+    return(list(full=out, masked=out.masked, confusions=confusions))
 }
 
 analyze_probSparse <- function(dfs) {
