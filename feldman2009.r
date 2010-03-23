@@ -166,15 +166,46 @@ crunchHitsFAs <- function(res) {
     return(res.m)
 }
 
-confusion_tables <- function(model) {
+confusion_tables <- function(model, ns=length(model$output)) {
+    if (ns<0) {ns = 1:length(model$output)}
     baseNl = model$Nl
     realposlabs = getposlabs( unlist(lapply(1:length(baseNl), function(N) rep(N, baseNl[N]))),
         lminPairs,
-        1:length(Nl) )
-    obsposlabs = with(model$output[[length(model$output)]], getposlabs(z, l, lexlab))
-    return(xtabs(~real+obs, data.frame(real=realposlabs, obs=obsposlabs)))
+        1:length(baseNl) )
+    out = lapply(
+        model$output[ns],
+        function(otpt) {xtabs(~real+obs,
+                              data.frame(real=realposlabs,
+                                         obs=with(otpt, getposlabs(z, l, lexlab))
+                                         )
+                              )
+                    }
+        )
 }
 
-#full_analysis <- function() {
-#    analyze_probSparse(ms_probSparse)
-#    
+mut_info <- function(jpd) {
+    jpd = jpd / sum(jpd)
+    sum(jpd * (mylog2(jpd) - mylog2(t(t(rowSums(jpd))) %*% t(colSums(jpd)))))
+}
+
+entropy <- function(p) {
+    -1*sum(p * mylog2(p))
+}
+
+
+mylog2 <- function(x) {
+    ret = log(x) / log(2)
+    ret[x==0] = 0
+    return(ret)
+}
+
+my_chisq.test <- function(tab) {
+    tab = matrix(tab[c('2','3'), apply(tab[c('2','3'), ], 2, function(x) any(x!=0))], nrow=2)
+    #print(tab)
+
+    E = t(t(rowSums(tab))) %*% t(colSums(tab)) / sum(tab)
+    X = sum( (tab-E)^2 / E )
+    dof = prod(dim(tab)-1)
+    return(pchisq(X,dof, log=T, lower.tail=F))
+}
+

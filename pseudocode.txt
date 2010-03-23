@@ -1,0 +1,63 @@
+LEX HDP PSEUDOCODE
+
+Data structures:
+    words: 
+        each word is a list (tuple) of ndarrys + label
+    lexicon:
+        dict mapping label --> lexeme
+	lexeme:
+	    list of (n, mean, var, phon label)
+    phons:
+        dict mapping label --> phon
+	phon:
+	    list of (n, mean, var)
+	
+  
+Word sweep:
+    for word W in words:
+        hold out W:
+	    decrement N_k (k=z_W)
+	    decrement component stats
+       for lexeme L in lexicon:
+	    compute likelihood of W given L:
+	        for each segment S of W:
+		    eval likelihood function for each phon cat
+		multiply likelihoods
+	compute prior likelihood of W:
+	    sample r lexemes from phonemes
+	    compute likelihood of W for each new lexeme
+	adjust likelihoods according to counts
+	sample Z_new
+	if Z_new is new:
+	    (bookkeeping)
+	Bookkeeping:
+	    write Z_new to Zs
+	    increment Z_new stats according to W
+	    
+    
+
+Phone sweep
+    for lexeme L in lexicon:
+        for each segment S in L:
+	    hold out S:
+	        decrement N_p (p=c_S)
+		remove 
+
+
+--------NOTES ------------------------------------------
+can just keep track of category summary statistics?
+  e.g. keep track of mean, variance, n for each lexical phoneme category
+  update
+  --> YES WE CAN -- Knuth's algorith for running mean/variance
+
+so only need to keep forward labels: word/segment labels
+and update incrementally/decrementally the category parameters
+  (both for word categories and phoneme categories)
+
+categories are defined by:
+  summary stats:
+    mean
+    count
+    variance
+  parent category (e.g. segment labels for lexemes)
+(for lexical categories mean/variances are vectors -- one per segment)
