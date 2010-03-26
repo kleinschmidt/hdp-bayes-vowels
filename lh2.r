@@ -114,8 +114,14 @@ word.lhood <- function(word, lexeme, phons, params, log=TRUE) {
     }
 }
 
+# create an empty phon
+phon.new <- function() {
+    return(list(n=0, m=0, s=0))
+}
+
 # add an observation or group of observations to a phonetic category
-phon.push <- function(phon, obs) {
+phon.push <- function(phon=NULL, obs) {
+    if (is.null(phon)) phon=phon.new()
     for (o in obs) {
         phon = var.increment(o, phon)
     }
@@ -131,14 +137,27 @@ phon.pull <- function(phon, obs) {
     return(phon)
 }
 
-# add an observation or group of observations to a lexical category
-lex.push <- function(lex, obs) {}
-lex.pull <- function(lex, obs) {}
 
-phon.get <- function(ps, name) {
-    n = which(ps$names == name)
-    if (length(n) < 1) {stop(paste('No phon with name', name))}
-    return(ps$vals[[n]])
+# get a phon by name
+phons.get <- function(ps, name) {
+    name = as.character(name)
+    if (any(names(ps)==name)) {
+        return(ps[[name]])
+    } else {
+        stop(paste('No phon with name', name))
+    }
+}
+
+# add an observation to a phon by name
+phons.put <- function(ps, obs, name) {
+    name = as.character(name)
+    if (any(names(ps)==name)) {
+        ps[[name]] = phon.push(ps[[name]], obs)
+    } else {
+        ps[[name]] = phon.push(ps[[name]], obs)
+        if (exists('DEBUG')) print(paste('  DB: creating new phon named', name))
+    }
+    return(ps)
 }
 
 phons.make <- function(obs, labs) {
@@ -148,7 +167,62 @@ phons.make <- function(obs, labs) {
 }
 
 
+# create a new lex of given length
+lex.new <- function(len) {
+    if (!is.numeric(len)) {
+        len=length(len)
+        warning(paste('converting non-numeric length argument (', len, ') to lex.new to numeric', sep=''))
+    }
+    return(rep(list(list(n=0, m=0, s=0)), len))
+}
 
+# add an observation or group of observations to a lexical category
+lex.push <- function(lex=NULL, word) {
+    if (is.null(lex)) lex=lex.new(length(word))
+    if (length(lex)==length(word)) {
+        for (i in 1:length(lex)) {
+            lex[[i]] = var.increment(word[[i]], lex[[i]])
+        }
+        return(lex)
+    } else {
+        stop(paste('length of lex (', length(lex), ') != length of word (', length(word), ')', sep=''))
+    }
+}
+
+# remove an observation from a lexical category
+lex.pull <- function(lex, word) {
+    if (length(lex)==length(word)) {
+        for (i in 1:length(lex)) {
+            lex[[i]] = var.decrement(word[[i]], lex[[i]])
+        }
+        return(lex)
+    } else {
+        stop(paste('length of lex (', length(lex), ') != length of obs (', length(word), ')', sep=''))
+    }
+}
+
+# get a lex by name
+lexs.get <- function(ls, name) {
+    name = as.character(name)
+    if (any(names(ls)==name)) {
+        return(ls[[name]])
+    } else {
+        stop(paste('no lex of name', name))
+    }
+}
+
+# add an observation to a lex by name
+lexs.put <- function(ls, word, name) {
+    name = as.character(name)
+    if (any(names(ls)==name)) {
+        ls[[name]] = lex.push(ls[[name]], word)
+    } else {
+        ls[[name]] = lex.push(ls[[name]], word)
+        if (exists('DEBUG')) print(paste('  DB: creating new lex named', name))
+    }
+    return(ls)
+}
+        
 
 lex.hdp <- function(words, params=list(nu=1.001, mu=0, s=1, alpha=1, r=5), n.iter=5) {
     for (i in 1:n.iter) {
@@ -159,7 +233,7 @@ lex.hdp <- function(words, params=list(nu=1.001, mu=0, s=1, alpha=1, r=5), n.ite
                 c(lxcn, lex.prior.samp(word, phons, params)),
                 function(l) {word.lhood(word, l, phons, params)})
             
-
+        }
         # end one interation
     }
 }
@@ -172,26 +246,33 @@ lex.hdp <- function(words, params=list(nu=1.001, mu=0, s=1, alpha=1, r=5), n.ite
 
 makeSomeWords <- function() {
     l = list(c(1,2), c(2,1), 1)
+    phons = list( '1'=list(n=0, m=0, s=0), '2'=list(n=0, m=0, s=0) )
     means = c(-2,2)
     s = 1
     Nl = c(100,100,100)
     words = NULL
     for (i in 1:length(l)) {
+        # for each word...
         thisWord = NULL
         for (j in 1:Nl[i]) {
+            # for each repetition of the word...
             w = NULL
             for (pos in l[[i]]) {
+                # for each position...
+                # given the phonetic category for that position
                 p = l[[i]][pos]
+                # generate an observation
                 o = rnorm(n=1, mean=means[p])
+                # and add it to the word
                 w = c(w, o)
+                # and update the phonetic category
+                phons = phons.add(phons, o, p)
             }
             thisWord = c(thisWord, list(w))
         }
         words = c(words, thisWord)
     }
-
     
-    
-    return(words)
+    return(list(words=words, phons=phons))
 }
                

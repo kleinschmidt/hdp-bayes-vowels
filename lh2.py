@@ -1,8 +1,8 @@
 class RunningVar:
     def __init__(self, n=0, m=0.0, s=0.0):
         self.n = n
-        self.m = m
-        self.s = s
+        self.m = float(m)
+        self.s = float(s)
 
     def __str__(self):
         return "rv(n: %d, mean: %.3f, var: %.3f)" % (self.n, self.m, self.s)

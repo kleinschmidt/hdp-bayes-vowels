@@ -18,30 +18,55 @@ lexdp:
 	phondp
 	iterate():
 		perform one sweep through the words
+		for word, lex in words:
+		    	  lex.holdout(word)
+			  Ls = [l.lhood(word) for l in lexs+self.sample_prior(r)]
+			  
 	sample():
 		return a random lex (according to DP)
 	sample_prior():
 		return a random lex (according to prior defined by phondp)
 
 words:
-	list( (w1, lex_z1), (w2, lex_z2), ..., (wn, lex_zn) )
+	list( (word_1, lex_z1), (word_2, lex_z2), ..., (word_n, lex_zn) )
 
 word:
 	list(obs_1, obs_2, ..., obs_i)
 
 lexs:
-	dict(name: lex)
+	list( lex_1, lex_2, ..., lex_m )
 
 lex: 
-	list(phon_1, phon_2, ..., phon_i)
+	list( (obs_1, phon_1), (obs_2, phon_2), ..., (obs_i, phon_i) )
+	count (number of words this lex is responsible for)
+	add(word):
+		update stats segment-wise
+		update parent phon's stats
+	remove(word)
+		update stats segment-wise
+		update parent phon's stats
+	lhood(word)
+		L = 0
+		for each segment s_i:
+		    	 L += phon_i.lhood(s_i)
 
 phondp:
-	lexs (analogous to words in lexdp)
-	phons (analogous to lexs in lexdp)
+	lexs (analogous to words in lexdp--patrons)
+	phons (analogous to lexs in lexdp--tables)
+	params
+	newphon()
 	iterate():
 		perform one sweep through lexs
 	sample():
 		return a random phon (according to DP)
+
+phon:
+	obs (RunningVar instance)
+	count (number of segments this phon is responsible for)
+	add(seg)
+	remove(seg)
+	lhood(seg)
+	
 
 running_var:
 	n, m, s
