@@ -1,3 +1,49 @@
+from scipy.special import gammaln as lgamma
+from numpy import *
+
+class Phon:
+    def __init__(self, parent):
+        self.obs = RunningVar()
+        self.count = 0
+        if parent==None:
+            self.params = {'nu': 1.001, 'mu': 0.0, 's': 1.0}
+        else:
+            self.params = parent.params
+    
+    def add(self, seg):
+        self.obs.merge(seg)
+        self.count += 1
+    
+    def remove(self, seg):
+        self.obs.split(seg)
+        self.count -= 1
+    
+    def lhood(self, seg, LOG=True):
+        n = seg.n
+        nu = self._nu_n()
+        mu = self._mu_n()
+        s_nu = self._s_n()
+        print n, nu, mu, s_nu, lgamma, pi, log
+        L = lgamma((nu+n)/2) - lgamma(nu/2) - (n/2)*log(pi*s_nu) - (1/2)*log((nu+n)/nu)
+        L -= (nu+n)/2 * log(1 + (seg.n*seg.s + (seg.m-mu)**2 * (n*nu)/(n+nu)) / s_nu)
+        if not LOG:
+            return exp(L)
+        else:
+            return L
+    
+    def _nu_n(self):
+        return self.params['nu'] + self.obs.n
+    
+    def _mu_n(self):
+        return (self.params['mu']*self.params['nu'] + self.obs.m*self.obs.n) / (self.params['nu']+self.obs.n)
+    
+    def _s_n(self):
+        return (self.params['nu']*self.params['s'] +
+                self.obs.n*self.obs.s +
+                self.params['nu']*self.obs.n/(self.params['nu']+self.obs.n) * \
+                    (self.obs.m - self.params['mu'])**2)
+
+
 class RunningVar:
     def __init__(self, n=0, m=0.0, s=0.0):
         self.n = n
@@ -27,6 +73,9 @@ class RunningVar:
     
     def merge(self, other):
         """merge the observations from another rv into this one"""
+        if not isinstance(other, RunningVar):
+            raise TypeError('merge() requires a RunningVar object')
+        
         nx = self.n
         mx = self.m
         sx = self.s
@@ -41,6 +90,9 @@ class RunningVar:
     
     def split(self, other):
         """remove multiple observations from this rv"""
+        if not isinstance(other, RunningVar):
+            raise TypeError('split() requires a RunningVar object')
+        
         n = self.n
         m = self.m
         s = self.s
