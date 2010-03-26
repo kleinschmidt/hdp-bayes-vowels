@@ -11,6 +11,45 @@ Data structures:
         dict mapping label --> phon
 	phon:
 	    list of (n, mean, var)
+
+lexdp:
+	words
+	lexs
+	phondp
+	iterate():
+		perform one sweep through the words
+	sample():
+		return a random lex (according to DP)
+	sample_prior():
+		return a random lex (according to prior defined by phondp)
+
+words:
+	list( (w1, lex_z1), (w2, lex_z2), ..., (wn, lex_zn) )
+
+word:
+	list(obs_1, obs_2, ..., obs_i)
+
+lexs:
+	dict(name: lex)
+
+lex: 
+	list(phon_1, phon_2, ..., phon_i)
+
+phondp:
+	lexs (analogous to words in lexdp)
+	phons (analogous to lexs in lexdp)
+	iterate():
+		perform one sweep through lexs
+	sample():
+		return a random phon (according to DP)
+
+running_var:
+	n, m, s
+	push(x)
+	pull(x)
+	merge(rv2)
+	split(rv2)
+	
 	
   
 Word sweep:
@@ -39,9 +78,13 @@ Word sweep:
 Phone sweep
     for lexeme L in lexicon:
         for each segment S in L:
-	    hold out S:
-	        decrement N_p (p=c_S)
-		remove 
+	    hold out S
+	    for each phon P:
+	    	compute lhood of S given P
+	    compute prior of S
+	    sample Z_new given lhoods/prior
+	    assign S to Z_new
+
 
 
 --------NOTES ------------------------------------------
