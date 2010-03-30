@@ -1,5 +1,6 @@
 from scipy.special import gammaln as lgamma
 from numpy import *
+import numbers
 
 class Phon:
     def __init__(self, parent):
@@ -11,11 +12,21 @@ class Phon:
             self.params = parent.params
     
     def add(self, seg):
-        self.obs.merge(seg)
+        if isinstance(seg, RunningVar):
+            self.obs.merge(seg)
+        elif isinstance(seg, numbers.Real):
+            self.obs.push(seg)
+        else:
+            raise TypeError('seg needs to be number or RunningVar to add to Phon')
         self.count += 1
     
     def remove(self, seg):
-        self.obs.split(seg)
+        if isinstance(seg, RunningVar):
+            self.obs.split(seg)
+        elif isinstance(seg, numbers.Real):
+            self.obs.pull(seg)
+        else:
+            raise TypeError('seg needs to be number or RunningVar to remove from Phon')
         self.count -= 1
     
     def lhood(self, seg, LOG=True):
@@ -23,9 +34,10 @@ class Phon:
         nu = self._nu_n()
         mu = self._mu_n()
         s_nu = self._s_n()
-        print n, nu, mu, s_nu, lgamma, pi, log
-        L = lgamma((nu+n)/2) - lgamma(nu/2) - (n/2)*log(pi*s_nu) - (1/2)*log((nu+n)/nu)
-        L -= (nu+n)/2 * log(1 + (seg.n*seg.s + (seg.m-mu)**2 * (n*nu)/(n+nu)) / s_nu)
+        print n, nu, mu, s_nu
+        #print n, nu, mu, s_nu, lgamma, pi, log
+        L = lgamma((nu+n)/2) - lgamma(nu/2) - n*0.5*log(pi*s_nu) - 0.5*log((nu+n)/nu)
+        L -= (nu+n)*0.5 * log(1 + (seg.n*seg.s + (seg.m-mu)**2 * (n*nu)/(n+nu)) / s_nu)
         if not LOG:
             return exp(L)
         else:
@@ -38,10 +50,35 @@ class Phon:
         return (self.params['mu']*self.params['nu'] + self.obs.m*self.obs.n) / (self.params['nu']+self.obs.n)
     
     def _s_n(self):
-        return (self.params['nu']*self.params['s'] +
-                self.obs.n*self.obs.s +
+        return (self.params['s'] + self.obs.n*self.obs.s +
                 self.params['nu']*self.obs.n/(self.params['nu']+self.obs.n) * \
                     (self.obs.m - self.params['mu'])**2)
+
+    def test(self):
+        # this checks out with the R implementation in lh2.r
+        p = Phon(None)
+        x = range(20)
+        for o in x: 
+            p.add(o)
+        print p.obs
+        print [p.lhood(RunningVar(n=1, m=float(o), s=0.0)) for o in x]
+        return p
+
+
+class Lex:
+    def __init(self, parent=None):
+        self.count = 0
+        self.l = []
+        self.parent = parent
+
+    def add(self, word):
+        pass
+
+    def remove(self, word):
+        pass
+
+    def lhood(self, word):
+        pass
 
 
 class RunningVar:

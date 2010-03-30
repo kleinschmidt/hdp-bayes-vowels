@@ -92,7 +92,7 @@ lhood <- function(obs, phon, params, log=TRUE) {
     n = obs$n
     nuN = with(params, nu + phon$n)
     muN = with(params, mu * nu/nuN + phon$m * phon$n/nuN)
-    sN = with(params, s + phon$n*phon$s + (phon$m - mu) * nu*phon$n/(nu+phon$n))
+    sN = with(params, s + phon$n*phon$s + (phon$m - mu)^2 * nu*phon$n/(nu+phon$n))
 
     # normalization constants
     L = lgamma((nuN + n)/2) + 0.5*log(nuN/(n+nuN)) - lgamma(nuN/2) - n/2*log(pi*sN)
@@ -101,6 +101,19 @@ lhood <- function(obs, phon, params, log=TRUE) {
 
     if (!log) L = exp(L)
     return(L)
+}
+
+nuN <- function(phon, params) {
+    with(params, nu+phon$n)
+}
+muN <- function(phon, params) {
+    nuN = nuN(phon,params)
+    with(params, mu * nu/nuN + phon$m * phon$n/nuN)
+}
+sN <- function(phon, params) {
+    nuN = nuN(phon,params)
+    muN = muN(phon,params)
+    with(params, s + phon$n*phon$s + (phon$m - mu)^2 * nu*phon$n/(nu+phon$n))
 }
 
 lhood1 <- function(x, phon, params, log=TRUE) {lhood(list(n=1,m=x,s=0), phon, params, log)}
@@ -276,3 +289,11 @@ makeSomeWords <- function() {
     return(list(words=words, phons=phons))
 }
                
+
+test <- function() {
+    x = seq(0, 19)
+    p = phon.push(obs=x)
+    params = list( nu=1.001, mu=0, s=1 )
+    print( c(nuN(p, params), muN(p, params), sN(p,params)) )
+    return(sapply(x, function(o) {lhood1(o, p, params)}))
+}
