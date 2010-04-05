@@ -28,7 +28,7 @@ lexdp:
 		return a random lex (according to prior defined by phondp)
 
 words:
-	list( (word_1, lex_z1), (word_2, lex_z2), ..., (word_n, lex_zn) )
+	list( [word_1, lex_z1[, [word_2, lex_z2], ..., [word_n, lex_zn] )
 
 word:
 	list(obs_1, obs_2, ..., obs_i)
@@ -37,7 +37,7 @@ lexs:
 	list( lex_1, lex_2, ..., lex_m )
 
 lex: 
-	list( (obs_1, phon_1), (obs_2, phon_2), ..., (obs_i, phon_i) )
+	list( [obs_1, phon_1], [obs_2, phon_2], ..., [obs_i, phon_i] )
 	count (number of words this lex is responsible for)
 	add(word):
 		update stats segment-wise
@@ -56,14 +56,19 @@ phondp:
 	params
 	newphon()
 	iterate():
-		perform one sweep through lexs
+		for lex in lexs:
+		    	for obs, phon in lex:
+		   	    	 phon.holdout(obs)
+			 	 probs = [p.lhood(obs)+p.count for p in phons+phon.prior()]
+				 
 	sample():
 		return a random phon (according to DP)
 
 phon:
 	obs (RunningVar instance)
 	count (number of segments this phon is responsible for)
-	add(seg)
+	add(seg):
+		phon.obs.push(seg) or .merge(seg)
 	remove(seg)
 	lhood(seg)
 	
