@@ -1,9 +1,10 @@
 from scipy.special import gammaln as lgamma
 from numpy import *
+import numpy as np
 import numbers
 
 class Phon:
-    def __init__(self, parent):
+    def __init__(self, parent=None):
         self.obs = RunningVar()
         self.count = 0
         if parent==None:
@@ -65,20 +66,57 @@ class Phon:
         return p
 
 
+class PhonDP:
+    def __init__(self, params=None):
+        if params==None:
+            self.params = { 'nu': 1.001, 'mu': 0.0, 's': 1.0, 'alpha': 1.0 }
+        else:
+            self.params = params
+        self.lexs = None
+        self.phons = [Phon(self)]
+
+    def newphon(self):
+        p = Phon(self)
+        self.phons.append(p)
+        return p
+
+    def iterate(self, n=1):
+        for i in range(n):
+            pass
+        return
+
+    def sample(self, n=1):
+        probs = [p.count for p in phons]
+        probs = [i/sum(probs) for i in probs]
+        # multinomial returns a trials-by-phon matrix which has one
+        # nonzero entry per row.  the second element returned by
+        # nonzero() is the column (phon) indices.
+        samp = np.nonzero(np.random.multinomial(1, probs, n))[1]
+        return [self.phons[i] for i in samp]
+
+
 class Lex:
-    def __init(self, parent=None):
+    def __init__(self, parents):
         self.count = 0
-        self.l = []
-        self.parent = parent
-
+        self.segs = [[p, RunningVar()] for p in parents]
+    
     def add(self, word):
-        pass
-
+        for labs, seg in zip(self.segs, word):
+            labs[0].add(seg)
+            labs[1].push(seg)
+        self.count += 1
+    
     def remove(self, word):
-        pass
-
+        for labs, seg in zip(self.segs, word):
+            labs[0].remove(seg)
+            labs[1].pull(seg)
+        self.count -= 1
+    
     def lhood(self, word):
-        pass
+        L = 0
+        for labs, seg in zip(self.segs, word):
+            L += labs[0].lhood(seg)
+        return L
 
 
 class RunningVar:
@@ -173,4 +211,19 @@ class RunningVar:
         m = sum(xx)/n
         s = sum([(x-m)**2 for x in xx])/n
         return m,s
+
+
+################################ TESTING STUFF ##########################################
+def makeGaussianPhon(mean=0.0, var=1.0, n=20):
+    samp = np.random.normal(mean, var, n)
+    p = Phon()
+    for x in samp: p.add(x)
+    return p, samp
+
+def makeSomeWords():
+    obs1 = np.random.normal(2, 1.0, 50)
+    obs2 = np.random.normal(-2, 1.0, 50)
+    words1 = zip(obs1[0:25], obs2[0:25])
+    words2 = zip(obs2[25:50], obs1[25:50])
+    return (words1, words2)
 
