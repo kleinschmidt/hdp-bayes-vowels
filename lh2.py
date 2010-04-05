@@ -98,25 +98,37 @@ class PhonDP:
 class Lex:
     def __init__(self, parents):
         self.count = 0
-        self.segs = [[p, RunningVar()] for p in parents]
+        self.segs = [[RunningVar(), p] for p in parents]
     
     def add(self, word):
-        for labs, seg in zip(self.segs, word):
-            labs[0].add(seg)
-            labs[1].push(seg)
+        for lseg, wseg in zip(self.segs, word):
+            # labs[1] = parent phon
+            lseg[1].add(wseg)
+            # labs[0] = observations (RunningVar)
+            lseg[0].push(wseg)
         self.count += 1
     
     def remove(self, word):
-        for labs, seg in zip(self.segs, word):
-            labs[0].remove(seg)
-            labs[1].pull(seg)
+        for lseg, wseg in zip(self.segs, word):
+            # labs[1] = parent phon
+            lseg[1].remove(wseg)
+            # labs[0] = observations (RunningVar)
+            lseg[0].pull(wseg)
         self.count -= 1
+
+    def holdout(self, word):
+        self.remove(word)
     
     def lhood(self, word):
         L = 0
-        for labs, seg in zip(self.segs, word):
-            L += labs[0].lhood(seg)
+        for lseg, wseg in zip(self.segs, word):
+            # lseg[1] = parent
+            L += lseg[1].lhood(wseg)
         return L
+
+
+class LexDP:
+    def __init__(self, words):
 
 
 class RunningVar:
