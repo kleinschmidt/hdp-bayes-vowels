@@ -54,7 +54,7 @@ class Phon:
         return (self.params['s'] + self.obs.n*self.obs.s +
                 self.params['nu']*self.obs.n/(self.params['nu']+self.obs.n) * \
                     (self.obs.m - self.params['mu'])**2)
-
+    
     def test(self):
         # this checks out with the R implementation in lh2.r
         p = Phon(None)
@@ -72,27 +72,44 @@ class PhonDP:
             self.params = { 'nu': 1.001, 'mu': 0.0, 's': 1.0, 'alpha': 1.0 }
         else:
             self.params = params
-        self.lexs = None
-        self.phons = [Phon(self)]
-
+        self.children = None
+        self.phons = [Phon(parent=self)]
+    
     def newphon(self):
         p = Phon(self)
         self.phons.append(p)
         return p
-
+    
     def iterate(self, n=1):
         for i in range(n):
-            pass
+            # iterate n times
+            for seg in self.children.segments():
+                # seg is a lexical segment of the form [obs, lab]
+                obs = seg[0]
+                lab = seg[1]
+                lab.holdout(obs)
+                probs = [p.lhood(obs) + p.count for p in self.phons] + \
+#####################                    [self.prior(obs) + self.params['alpha']] ########################
+                # fix this ^ ... have empty phons at end of list with count = alpha
+                i = sampleMultinomial(prob).pop()
+                if i < len(self.phons):
+                    # picked existing phon
+                    seg[1] = self.phons[i]
+                    seg[1].add(obs)
+                else:
+                    # picked new phon
+                    seg[1] = self.newphon()
+                    seg[1].add(obs)
+                if lab.count == 0:
+                    # remove empty phon
+                    self.phons.remove(lab)
         return
-
+    
     def sample(self, n=1):
+        """Sample from this DP.  Returns a list of n Phons, each with probability 
+        weighted by their count in the DP"""
         probs = [p.count for p in phons]
-        probs = [i/sum(probs) for i in probs]
-        # multinomial returns a trials-by-phon matrix which has one
-        # nonzero entry per row.  the second element returned by
-        # nonzero() is the column (phon) indices.
-        samp = np.nonzero(np.random.multinomial(1, probs, n))[1]
-        return [self.phons[i] for i in samp]
+        return [self.phons[i] for i in sampleMultinomial(probs, n)]
 
 
 class Lex:
@@ -115,7 +132,7 @@ class Lex:
             # labs[0] = observations (RunningVar)
             lseg[0].pull(wseg)
         self.count -= 1
-
+    
     def holdout(self, word):
         self.remove(word)
     
@@ -129,6 +146,12 @@ class Lex:
 
 class LexDP:
     def __init__(self, words):
+        pass
+    
+    def segments(self):
+        for lex in self.lexs:
+            for seg in lex:
+                yield seg
 
 
 class RunningVar:
@@ -136,7 +159,7 @@ class RunningVar:
         self.n = n
         self.m = float(m)
         self.s = float(s)
-
+    
     def __str__(self):
         return "rv(n: %d, mean: %.3f, var: %.3f)" % (self.n, self.m, self.s)
     
@@ -166,11 +189,11 @@ class RunningVar:
         nx = self.n
         mx = self.m
         sx = self.s
-
+        
         ny = other.n
         my = other.m
         sy = other.s
-
+        
         self.n = nx + ny
         self.m = (nx*mx + ny*my)/self.n
         self.s = (nx*sx + ny*sy)/self.n + (mx-my)**2 * nx*ny/(nx+ny)**2
@@ -223,6 +246,16 @@ class RunningVar:
         m = sum(xx)/n
         s = sum([(x-m)**2 for x in xx])/n
         return m,s
+
+
+def sampleMultinomial(probs, n=1):
+    """Sample from a multinomial distribution over given probabilities.
+    Automatically normalizes probs to sum to 1, and returns a list of
+    indices"""
+    # multinomial returns a trials-by-phon matrix which has one
+    # nonzero entry per row.  the second element returned by
+    # nonzero() is the column (phon) indices.
+    return np.nonzero(np.random.multinomial(1, [x/sum(probs) for x in probs], n))[1]
 
 
 ################################ TESTING STUFF ##########################################
