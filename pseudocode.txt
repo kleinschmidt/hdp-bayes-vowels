@@ -15,7 +15,7 @@ Data structures:
 lexdp:
 	words
 	lexs
-	phondp
+	parent (PhonDP)
 	iterate():
 		perform one sweep through the words
 		for word, lex in words:
@@ -80,6 +80,27 @@ running_var:
 	merge(rv2)
 	split(rv2)
 	
+
+################################################################################
+How to store/track/use priors:
+
+1) as Phon/Lex in DP with special flag and count=alpha
+2) as Phon/Lex in separate list
+
+need to:
+     resample at beginning of every sweep (for lexs)
+     (1 - need to find and replace in list
+      2 - only need to replace the whole list)
+     change from unoccupied to occupied (and replace when doing so)
+     (1 - change flag count, don't need to move, then append one from prior
+      2 - move from one list to another (or create/delete) then add one from prior)
+     combine lhood with that of occupied tables in sampling labels
+     (1 - simple list comprehension -- same functional form for regulars/priors
+      2 - list comprehension on joined lists)
+
+Advantage 2: add self.priors to Lex/Phon classes
+
+################################################################################
 	
   
 Word sweep:

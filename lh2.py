@@ -3,10 +3,142 @@ from numpy import *
 import numpy as np
 import numbers
 
+class PhonDP:
+    def __init__(self, params=None):
+        if not params:
+            self.params = { 'nu': 1.001, 'mu': 0.0, 's': 1.0, 'alpha': 1.0 }
+        else:
+            self.params = params
+        self.children = None
+        self.phons = [Phon(parent=self)]
+        #self.priors = [Phon(parent=self, count=self.params['alpha']/self.params['s']) for n in range(self.params['s'])]
+        # in a situation where the prior wasn't simple the above expression should
+        # be used (so the prior probability is approximated by sampling
+        # s items from the base distribution) but since the prior in this case is
+        # analytically tractable (with an empty Phon) there's no need to bother
+        self.priors = [Phon(parent=self, count=self.params['alpha'])]
+    
+    def newphon(self):
+        p = Phon(self)
+        self.phons.append(p)
+        return p
+    
+    def iterate(self, n=1):
+        for i in range(n):
+            # iterate n times
+            for seg in self.children.segments():
+                # seg should be a Segment instance, check here
+                if not isinstance(seg, Segment): raise TypeError('seg should be a Segment')
+                # hold this segment out
+                lab = seg.holdout()
+                # calculate probabilities (lhood + CRP prior) and sample a Phon
+                probs = [p.lhood(seg.obs) + p.count for p in self.phons+self.priors]
+                i = sampleMultinomial(probs).pop()
+                # record the new Phon, creating a new one if necessary
+                if i < len(self.phons):
+                    # picked existing phon
+                    seg.relabel(self.phons[i])
+                else:
+                    # picked new phon
+                    seg.relabel(self.newphon())
+                # if the old Phon is empty, remove it
+                if lab.count == 0:
+                    # remove empty phon
+                    self.phons.remove(lab)
+        return
+    
+    def sample(self, n=1):
+        """Sample from this DP.  Returns a list of n Phons, each with probability 
+        weighted by their count in the DP"""
+        probs = [p.count for p in self.phons]
+        return [self.phons[i] for i in sampleMultinomial(probs, n)]
+
+
+class LexDP:
+    def __init__(self, words, parent=None, params=None):
+        # initialize params
+        if not params:
+            self.params = { 'nu': 1.001, 'mu': 0.0, 's': 1.0, 'beta': 1.0, 'alpha': 1.0, 'r': 5 }
+        else:
+            self.params = params
+        # initialize parent PhonDP
+        if not parent:
+            self.parent = PhonDP(params)
+        else:
+            self.parent = parent
+        self.parent.children = self
+        # sort words by length
+        wordsByLen = dict()
+        for w in words:
+            try:
+                wordsByLen[len(w)] += [w]
+            except KeyError:
+                wordsByLen[len(w)] = [w]
+        # initialize lexs with one Lex per unique word length
+        self.lexs = []
+        self.priors = []
+        self.words = []
+        for l in wordsByLen.keys():
+            # create a new Lex of the appropriate length by sampling Phons
+            # from the parent distribution
+            newlex = self.sampleBase(length=l).pop()
+            # append it to the list of lexs
+            self.lexs.append(newlex)
+            # add each word of the right length to it (and it's Phons...) and
+            # append a properly labeled Word to self.words
+            for w in wordsByLen[l]:
+                newlex.add(w)
+                self.words.append(Word(lex=newlex, obs=w))
+            # initialize priors, too
+            self.priors.append(self.sampleBase(length=l, 
+                                               n=self.params['r'], 
+                                               count=self.params['beta']/self.params['r']))
+
+    def iterate(self, n=1):
+        for i in range(n):
+            for word in self.words:
+                # hold out this word
+                oldlex = word.holdout()
+                # calculate probability of each lex
+                
+    
+    def segments(self):
+        """Generates an iterator over all segments in the lexicon"""
+        for lex in self.lexs:
+            for seg in lex:
+                yield seg
+    
+    def refreshPriors(self, length=None):
+        for l in self.priors:
+            if not length or l.length==length:
+                self.priors.remove(l)
+                self.priors.extend(self.sampleBase(l.length(), n=1,
+                                                   count=self.params['beta']/self.params['r']))
+    
+    def sampleBase(self, length, n=1, count=0):
+        """Sample n Lexs from the base distribution defined by self.parent"""
+        return [Lex(self.parent.sample(length), count) for i in range(n)]
+    
+    def sample(self, n=1, length=None):
+        """
+        Sample a Lex from this DP, with probability proportional to each Lex's
+        count.
+
+        Keyword Args:
+        n = 1 (number of samples)
+        length = None (if non-none, only samples Lex's of given length)
+        """
+        if not length:
+            probs = [l.count*(l.length==length) for l in self.lexs]
+        else:
+            probs = [l.count for l in self.lexs]
+        return [self.lexs[i] for i in sampleMultinomial(probs, n)]
+
+
 class Phon:
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, count=0):
         self.obs = RunningVar()
-        self.count = 0
+        self.count = count
         if parent==None:
             self.params = {'nu': 1.001, 'mu': 0.0, 's': 1.0}
         else:
@@ -66,95 +198,125 @@ class Phon:
         return p
 
 
-class PhonDP:
-    def __init__(self, params=None):
-        if params==None:
-            self.params = { 'nu': 1.001, 'mu': 0.0, 's': 1.0, 'alpha': 1.0 }
-        else:
-            self.params = params
-        self.children = None
-        self.phons = [Phon(parent=self)]
-    
-    def newphon(self):
-        p = Phon(self)
-        self.phons.append(p)
-        return p
-    
-    def iterate(self, n=1):
-        for i in range(n):
-            # iterate n times
-            for seg in self.children.segments():
-                # seg is a lexical segment of the form [obs, lab]
-                obs = seg[0]
-                lab = seg[1]
-                lab.holdout(obs)
-                probs = [p.lhood(obs) + p.count for p in self.phons] + \
-#####################                    [self.prior(obs) + self.params['alpha']] ########################
-                # fix this ^ ... have empty phons at end of list with count = alpha
-                i = sampleMultinomial(prob).pop()
-                if i < len(self.phons):
-                    # picked existing phon
-                    seg[1] = self.phons[i]
-                    seg[1].add(obs)
-                else:
-                    # picked new phon
-                    seg[1] = self.newphon()
-                    seg[1].add(obs)
-                if lab.count == 0:
-                    # remove empty phon
-                    self.phons.remove(lab)
-        return
-    
-    def sample(self, n=1):
-        """Sample from this DP.  Returns a list of n Phons, each with probability 
-        weighted by their count in the DP"""
-        probs = [p.count for p in phons]
-        return [self.phons[i] for i in sampleMultinomial(probs, n)]
-
-
 class Lex:
-    def __init__(self, parents):
-        self.count = 0
-        self.segs = [[RunningVar(), p] for p in parents]
+    def __init__(self, parents, count=0):
+        self.count = count
+        self.segs = [Segment(RunningVar(), p) for p in parents]
+    
+    def length(self):
+        """Return the length of this Lex in segments"""
+        return len(self.segs)
+    
+    def phons(self):
+        """Return this Lex's Phons"""
+        return [s.phon for s in self.segs]
+    
+    def obs(self):
+        """Return the obs (RunningVar) for each of this Lex's segments"""
+        return [s.obs for s in self.segs]
     
     def add(self, word):
+        """
+        Add a single word to this Lex (and the corresponding segments from
+        the corresponding Phons)
+        """
         for lseg, wseg in zip(self.segs, word):
             # labs[1] = parent phon
-            lseg[1].add(wseg)
+            lseg.phon.add(wseg)
             # labs[0] = observations (RunningVar)
-            lseg[0].push(wseg)
+            lseg.obs.push(wseg)
         self.count += 1
     
     def remove(self, word):
+        """
+        Remove a single word from this Lex (and the corresponding segments
+        from the corresponding Phons
+        """
         for lseg, wseg in zip(self.segs, word):
             # labs[1] = parent phon
-            lseg[1].remove(wseg)
+            lseg.phon.remove(wseg)
             # labs[0] = observations (RunningVar)
-            lseg[0].pull(wseg)
+            lseg.obs.pull(wseg)
         self.count -= 1
     
     def holdout(self, word):
         self.remove(word)
     
     def lhood(self, word):
-        L = 0
-        for lseg, wseg in zip(self.segs, word):
-            # lseg[1] = parent
-            L += lseg[1].lhood(wseg)
-        return L
+        if self.length() != word.length():
+            return 0
+        else:
+            L = 0
+            for lseg, wseg in zip(self.segs, word.obs):
+                # lseg[1] = parent
+                L += lseg.phon.lhood(wseg)
+            return L
 
 
-class LexDP:
-    def __init__(self, words):
-        pass
+class Word:
+    """
+    Simple container class, to bind together a list of observations and a label.
+
+    Fields:
+    obs (should be a number or ndarray)
+    lex (should be a Lex instance)
+    """
+    def __init__(self, obs, lex):
+        if not isinstance(lex, Lex):
+            raise TypeError('Word lex label must be a Lex instance')
+        self.obs = obs
+        self.lex = lex
+
+    def __iter__(self):
+        return self.obs.__iter__()
+
+    def relabel(self, newlex):
+        """Apply a new Lex label to this word"""
+        self.lex = newlex
+        self.lex.add(self.obs)
     
-    def segments(self):
-        for lex in self.lexs:
-            for seg in lex:
-                yield seg
+    def holdout(self):
+        """Remove this word from its Lex, set lex to None, and return the old Lex"""
+        self.lex.remove(self.obs)
+        l = self.lex
+        self.lex = None
+        return l
+
+
+class Segment:
+    """
+    Simple container class, to bind together a single observation and a label.
+
+    Fields:
+    obs (should be a RunningVar instance)
+    phon (should be a Phon instance)
+    """
+    def __init__(self, obs, phon):
+        if not isinstance(obs, RunningVar):
+            raise TypeError('Segment obs should be a RunningVar instance')
+        if not isinstance(phon, Phon):
+            raise TypeError('Segment phon must be a Phon instance')
+        self.obs = obs
+        self.phon = phon
+    
+    def relabel(self, newphon):
+        """Apply a new label to this segment"""
+        self.phon = newphon
+        newphon.add(self.obs)
+    
+    def holdout(self):
+        """Hold this segment out of its Phon, set phon to None, and return the old label"""
+        self.phon.remove(self.obs)
+        p = self.phon
+        self.phon = None
+        return p
 
 
 class RunningVar:
+    """
+    RunningVar tracks the mean, variance, and count of a group of observations
+    incrementally.
+    """
     def __init__(self, n=0, m=0.0, s=0.0):
         self.n = n
         self.m = float(m)
@@ -249,9 +411,11 @@ class RunningVar:
 
 
 def sampleMultinomial(probs, n=1):
-    """Sample from a multinomial distribution over given probabilities.
+    """
+    Sample from a multinomial distribution over given probabilities.
     Automatically normalizes probs to sum to 1, and returns a list of
-    indices"""
+    indices
+    """
     # multinomial returns a trials-by-phon matrix which has one
     # nonzero entry per row.  the second element returned by
     # nonzero() is the column (phon) indices.
@@ -260,6 +424,15 @@ def sampleMultinomial(probs, n=1):
 
 ################################ TESTING STUFF ##########################################
 def makeGaussianPhon(mean=0.0, var=1.0, n=20):
+    """
+    Sample some points from a gaussian distribution and return a Phon
+    made from them as well as the sampled observations themselves
+
+    Keyword args:
+    mean=0.0
+    var=1.0
+    n=20
+    """
     samp = np.random.normal(mean, var, n)
     p = Phon()
     for x in samp: p.add(x)
