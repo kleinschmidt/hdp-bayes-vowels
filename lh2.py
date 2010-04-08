@@ -32,7 +32,7 @@ class PhonDP:
                 # hold this segment out
                 lab = seg.holdout()
                 # calculate probabilities (lhood + CRP prior) and sample a Phon
-                probs = [p.lhood(seg.obs) + p.count for p in self.phons+self.priors]
+                probs = [p.lhood(seg.obs) + np.log(p.count) for p in self.phons+self.priors]
                 i = sampleMultinomial(probs).pop()
                 # record the new Phon, creating a new one if necessary
                 if i < len(self.phons):
@@ -46,10 +46,19 @@ class PhonDP:
                     # remove empty phon
                     self.phons.remove(lab)
         return
+
+    def prune(self, phon):
+        """
+        Remove a given phon from this DP (method exists pretty much only for
+        symmetry's sake with LexDP
+        """
+        self.phons.remove(phon)
     
     def sample(self, n=1):
-        """Sample from this DP.  Returns a list of n Phons, each with probability 
-        weighted by their count in the DP"""
+        """
+        Sample from this DP.  Returns a list of n Phons, each with probability 
+        weighted by their count in the DP
+        """
         probs = [p.count for p in self.phons]
         return [self.phons[i] for i in sampleMultinomial(probs, n)]
 
@@ -78,19 +87,19 @@ class LexDP:
         self.lexs = []
         self.priors = []
         self.words = []
-        for l in wordsByLen.keys():
+        for length in wordsByLen.keys():
             # create a new Lex of the appropriate length by sampling Phons
             # from the parent distribution
-            newlex = self.sampleBase(length=l).pop()
+            newlex = self.sampleBase(length=length).pop()
             # append it to the list of lexs
             self.lexs.append(newlex)
             # add each word of the right length to it (and it's Phons...) and
             # append a properly labeled Word to self.words
-            for w in wordsByLen[l]:
+            for w in wordsByLen[length]:
                 newlex.add(w)
                 self.words.append(Word(lex=newlex, obs=w))
             # initialize priors, too
-            self.priors.append(self.sampleBase(length=l, 
+            self.priors.extend(self.sampleBase(length=length, 
                                                n=self.params['r'], 
                                                count=self.params['beta']/self.params['r']))
 
@@ -99,7 +108,19 @@ class LexDP:
             for word in self.words:
                 # hold out this word
                 oldlex = word.holdout()
-                # calculate probability of each lex
+                # calculate probability of each lex (log lhood + log (pseudo)count)
+                probs = [lex.lhood(word) + np.log(lex) for lex in self.lexs+self.priors]
+                i = sampleMultinomial(probs).pop()
+                # record the new label, adding a new lex/refreshing priors as necessary
+                if i < len(self.lexs):
+                    word.relabel(self.lexs[i])
+                else:
+                    word.relabel(self.sampleBase(length=len(word)).pop())
+                    self.lexs.append(word.lex)
+                    self.refreshPriors(length=len(word))
+                # remove old Lex if it's empty
+                if oldlex.count == 0:
+                    self.prune(oldlex)
                 
     
     def segments(self):
@@ -114,6 +135,17 @@ class LexDP:
                 self.priors.remove(l)
                 self.priors.extend(self.sampleBase(l.length(), n=1,
                                                    count=self.params['beta']/self.params['r']))
+
+    def prune(self, lex):
+        """Remove a given Lex from the list, pruning parent Phons as necessary"""
+        for seg in lex:
+            # throw in a sanity check, just for the hello of it.  if lex.count==0
+            # then seg.count should == 0 for all segments.
+            if seg.count != 0: raise Exception, "Segment and Lex counts disagree..."
+            # 
+            seg.phon.remove(seg.obs)
+            if seg.phon.count == 0: self.parent.prune(seg.phon)
+        self.lexs.remove(lex)
     
     def sampleBase(self, length, n=1, count=0):
         """Sample n Lexs from the base distribution defined by self.parent"""
@@ -136,21 +168,25 @@ class LexDP:
 
 
 class Phon:
-    def __init__(self, parent=None, count=0):
+    def __init__(self, parent=None, count=0, name="generic Phon"):
         self.obs = RunningVar()
         self.count = count
+        self.name = name
         if parent==None:
             self.params = {'nu': 1.001, 'mu': 0.0, 's': 1.0}
         else:
             self.params = parent.params
-    
+
+    def __str__(self):
+        return self.name
+
     def add(self, seg):
         if isinstance(seg, RunningVar):
             self.obs.merge(seg)
         elif isinstance(seg, numbers.Real):
             self.obs.push(seg)
         else:
-            raise TypeError('seg needs to be number or RunningVar to add to Phon')
+            raise TypeError('seg needs to be number or RunningVar to add to Phon (not %s)' % seg.__class__)
         self.count += 1
     
     def remove(self, seg):
@@ -159,7 +195,7 @@ class Phon:
         elif isinstance(seg, numbers.Real):
             self.obs.pull(seg)
         else:
-            raise TypeError('seg needs to be number or RunningVar to remove from Phon')
+            raise TypeError('seg needs to be number or RunningVar to remove from Phon (not %s)' % seg.__class__)
         self.count -= 1
     
     def lhood(self, seg, LOG=True):
@@ -203,6 +239,15 @@ class Lex:
         self.count = count
         self.segs = [Segment(RunningVar(), p) for p in parents]
     
+    def __iter__(self):
+        return self.segs.__iter__()
+
+    def __str__(self):
+        ret = ''
+        for seg in self:
+            ret += seg.__str__() + "\n"
+        return ret
+    
     def length(self):
         """Return the length of this Lex in segments"""
         return len(self.segs)
@@ -221,9 +266,7 @@ class Lex:
         the corresponding Phons)
         """
         for lseg, wseg in zip(self.segs, word):
-            # labs[1] = parent phon
             lseg.phon.add(wseg)
-            # labs[0] = observations (RunningVar)
             lseg.obs.push(wseg)
         self.count += 1
     
@@ -233,9 +276,7 @@ class Lex:
         from the corresponding Phons
         """
         for lseg, wseg in zip(self.segs, word):
-            # labs[1] = parent phon
             lseg.phon.remove(wseg)
-            # labs[0] = observations (RunningVar)
             lseg.obs.pull(wseg)
         self.count -= 1
     
@@ -248,7 +289,6 @@ class Lex:
         else:
             L = 0
             for lseg, wseg in zip(self.segs, word.obs):
-                # lseg[1] = parent
                 L += lseg.phon.lhood(wseg)
             return L
 
@@ -258,17 +298,20 @@ class Word:
     Simple container class, to bind together a list of observations and a label.
 
     Fields:
-    obs (should be a number or ndarray)
+    obs (should be a list/tuple of numbers or ndarrays)
     lex (should be a Lex instance)
     """
     def __init__(self, obs, lex):
         if not isinstance(lex, Lex):
-            raise TypeError('Word lex label must be a Lex instance')
+            raise TypeError('Word lex label must be a Lex instance (not %s)' % lex.__class__)
         self.obs = obs
         self.lex = lex
 
     def __iter__(self):
         return self.obs.__iter__()
+
+    def __len__(self):
+        return len(self.obs)
 
     def relabel(self, newlex):
         """Apply a new Lex label to this word"""
@@ -298,6 +341,9 @@ class Segment:
             raise TypeError('Segment phon must be a Phon instance')
         self.obs = obs
         self.phon = phon
+
+    def __str__(self):
+        return "Segment: %s, %s" % (self.phon.__str__(), self.obs.__str__())
     
     def relabel(self, newphon):
         """Apply a new label to this segment"""
