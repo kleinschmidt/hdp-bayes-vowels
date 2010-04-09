@@ -32,8 +32,8 @@ class PhonDP:
                 # hold this segment out
                 lab = seg.holdout()
                 # calculate probabilities (lhood + CRP prior) and sample a Phon
-                probs = [p.lhood(seg.obs) + np.log(p.count) for p in self.phons+self.priors]
-                i = sampleMultinomial(probs).pop()
+                probs = [np.exp(p.lhood(seg.obs)) * p.count for p in self.phons+self.priors]
+                i = sampleMultinomial(probs)
                 # record the new Phon, creating a new one if necessary
                 if i < len(self.phons):
                     # picked existing phon
@@ -41,6 +41,7 @@ class PhonDP:
                 else:
                     # picked new phon
                     seg.relabel(self.newphon())
+                    self.phons.append(seg.phon)
                 # if the old Phon is empty, remove it
                 if lab.count == 0:
                     # remove empty phon
@@ -109,14 +110,17 @@ class LexDP:
                 # hold out this word
                 oldlex = word.holdout()
                 # calculate probability of each lex (log lhood + log (pseudo)count)
-                probs = [lex.lhood(word) + np.log(lex) for lex in self.lexs+self.priors]
-                i = sampleMultinomial(probs).pop()
+                probs = [np.exp(lex.lhood(word)) * lex.count for lex in self.lexs+self.priors]
+                i = sampleMultinomial(probs)
                 # record the new label, adding a new lex/refreshing priors as necessary
                 if i < len(self.lexs):
+                    # old lex
                     word.relabel(self.lexs[i])
                 else:
-                    word.relabel(self.sampleBase(length=len(word)).pop())
-                    self.lexs.append(word.lex)
+                    # new lex...get sampled one from prior and replace it...
+                    newlex = self.priors[i-len(self.lexs)]
+                    word.relabel(newlex)
+                    self.lexs.append(newlex)
                     self.refreshPriors(length=len(word))
                 # remove old Lex if it's empty
                 if oldlex.count == 0:
@@ -130,12 +134,25 @@ class LexDP:
                 yield seg
     
     def refreshPriors(self, length=None):
+        """
+        Resample Lexs of the specified length from the base distribution defined
+        the parent PhonDP.
+        """
+        # get the indices to replace--either the indices w/ len==length or all
+        # the priors if no length is specified
+        indices = (i for i in range(len(self.priors))
+                   if len(self.priors[i])==length or not length)
+        for i in indices:
+            self.priors[i] = self.sampleBase(len(self.priors[i]), n=1,
+                                             count=self.params['beta']/self.params['r']).pop()
+    
+    def __OLD__refreshPriors(self, length=None):
         for l in self.priors:
-            if not length or l.length==length:
+            if not length or len(l)==length:
                 self.priors.remove(l)
-                self.priors.extend(self.sampleBase(l.length(), n=1,
+                self.priors.extend(self.sampleBase(len(l), n=1,
                                                    count=self.params['beta']/self.params['r']))
-
+    
     def prune(self, lex):
         """Remove a given Lex from the list, pruning parent Phons as necessary"""
         for seg in lex:
@@ -161,7 +178,7 @@ class LexDP:
         length = None (if non-none, only samples Lex's of given length)
         """
         if not length:
-            probs = [l.count*(l.length==length) for l in self.lexs]
+            probs = [l.count*(len(l)==length) for l in self.lexs]
         else:
             probs = [l.count for l in self.lexs]
         return [self.lexs[i] for i in sampleMultinomial(probs, n)]
@@ -199,14 +216,39 @@ class Phon:
         self.count -= 1
     
     def lhood(self, seg, LOG=True):
+        """
+        Calcunlate the likelihood (defaults to log) of a given segment, which should
+        be a RunningVar instance.
+        """
+        if not isinstance(seg, RunningVar):
+            raise TypeError('seg must be a RunningVar instance (not %s)' % seg.__class__)
         n = seg.n
         nu = self._nu_n()
         mu = self._mu_n()
         s_nu = self._s_n()
-        print n, nu, mu, s_nu
+        #print n, nu, mu, s_nu
         #print n, nu, mu, s_nu, lgamma, pi, log
         L = lgamma((nu+n)/2) - lgamma(nu/2) - n*0.5*log(pi*s_nu) - 0.5*log((nu+n)/nu)
         L -= (nu+n)*0.5 * log(1 + (seg.n*seg.s + (seg.m-mu)**2 * (n*nu)/(n+nu)) / s_nu)
+        if not LOG:
+            return exp(L)
+        else:
+            return L
+
+    def lhood1(self, seg, LOG=True):
+        """
+        Calculate the likelihood (defaults to log-lhood) for a single observation,
+        which is either numeric or an ndarray.
+
+        For likelihood of a group of observations, use .lhood().
+        """
+        nu = self._nu_n()
+        mu = self._mu_n()
+        s_nu = self._s_n()
+        #print nu, mu, s_nu
+        #print n, nu, mu, s_nu, lgamma, pi, log
+        L = lgamma((nu+1)/2) - lgamma(nu/2) - 0.5*log(pi*s_nu) - 0.5*log((nu+1)/nu)
+        L -= (nu+1)*0.5 * log(1 + (seg-mu)**2 * nu/(1+nu) / s_nu)
         if not LOG:
             return exp(L)
         else:
@@ -248,7 +290,7 @@ class Lex:
             ret += seg.__str__() + "\n"
         return ret
     
-    def length(self):
+    def __len__(self):
         """Return the length of this Lex in segments"""
         return len(self.segs)
     
@@ -284,12 +326,12 @@ class Lex:
         self.remove(word)
     
     def lhood(self, word):
-        if self.length() != word.length():
+        if len(self) != len(word):
             return 0
         else:
             L = 0
             for lseg, wseg in zip(self.segs, word.obs):
-                L += lseg.phon.lhood(wseg)
+                L += lseg.phon.lhood1(wseg)
             return L
 
 
@@ -462,9 +504,9 @@ def sampleMultinomial(probs, n=1):
     Automatically normalizes probs to sum to 1, and returns a list of
     indices
     """
-    # multinomial returns a trials-by-phon matrix which has one
+    # multinomial returns a trials-by-object matrix which has one
     # nonzero entry per row.  the second element returned by
-    # nonzero() is the column (phon) indices.
+    # nonzero() is the column (object) indices.
     return np.nonzero(np.random.multinomial(1, [x/sum(probs) for x in probs], n))[1]
 
 
@@ -489,5 +531,4 @@ def makeSomeWords():
     obs2 = np.random.normal(-2, 1.0, 50)
     words1 = zip(obs1[0:25], obs2[0:25])
     words2 = zip(obs2[25:50], obs1[25:50])
-    return (words1, words2)
-
+    return (words1 + words2)
