@@ -3,6 +3,15 @@ from numpy import *
 import numpy as np
 import numbers, warnings, sys
 
+
+def debugMethodInfo(func):
+    def wrapper(self, *args, **kwargs):
+        sys.stdout.write( '%s.%s ' % (self.__class__.__name__, func.__name__) )
+        func(self, *args, **kwargs)
+        sys.stdout.write( ' (done)\n' )
+    return wrapper
+
+
 class PhonDP:
     def __init__(self, params=None):
         if not params:
@@ -10,7 +19,9 @@ class PhonDP:
         else:
             self.params = params
         self.children = None
-        self.phons = [Phon(parent=self)]
+        self.phoncounter = 0
+        self.phons = []
+        self.newphon()
         #self.priors = [Phon(parent=self, count=self.params['alpha']/self.params['s']) for n in range(self.params['s'])]
         # in a situation where the prior wasn't simple the above expression should
         # be used (so the prior probability is approximated by sampling
@@ -19,22 +30,26 @@ class PhonDP:
         self.priors = [Phon(parent=self, count=self.params['alpha'])]
     
     def newphon(self):
-        p = Phon(self)
+        p = Phon(self, id=self.phoncounter)
+        self.phoncounter += 1
         self.phons.append(p)
+        print '  adding Phon', p.id
         return p
     
     def iterate(self, n=1):
+        print 'Phon sweep...'
         for i in range(n):
             # iterate n times
             for seg in self.children.segments():
                 # seg should be a Segment instance, check here
                 if not isinstance(seg, Segment): raise TypeError('seg should be a Segment')
                 # hold this segment out
-                try:
-                    lab = seg.holdout()
-                except EmptyTable:
-                    #...pruning it's label if necessary
-                    print 'pruning Phon'
+                #try:
+                lab = seg.holdout()
+                #except EmptyTable:
+                if lab.count == 0:
+                    #...pruning its label if necessary
+                    print 'pruning Phon', lab.id
                     self.prune(lab)
                 # calculate probabilities (lhood + CRP prior) and sample a Phon
                 probs = [np.exp(p.lhood(seg.obs)) * p.count for p in self.phons+self.priors]
@@ -46,7 +61,6 @@ class PhonDP:
                 else:
                     # picked new phon
                     seg.relabel(self.newphon())
-                    self.phons.append(seg.phon)
         return
 
     def prune(self, phon):
@@ -93,8 +107,6 @@ class LexDP:
         for length in wordsByLen.keys():
             # create and add a new Lex for this length
             newlex = self.addLex(length=length)
-            # append it to the list of lexs
-            self.lexs.append(newlex)
             # add each word of the right length to it (and it's Phons...) and
             # append a properly labeled Word to self.words
             for w in wordsByLen[length]:
@@ -104,15 +116,28 @@ class LexDP:
             self.priors.extend(self.sampleBase(length=length, 
                                                n=self.params['r'], 
                                                count=self.params['beta']/self.params['r']))
+
+    def __str__(self):
+        retr = 'LexDP state:\n' + \
+            'Labels:\n  ' + str([w.lex.id for w in self.words]) + '\n' + \
+            'Lexicon:\n'
+        for lex in self.lexs:
+            retr += '  %s -> (n=%d) %s\n' % (lex.id, lex.count, [s.phon.id for s in lex])
+        retr += 'Phones:\n'
+        for p in self.parent.phons:
+            retr += '  %s -> (n=%d) %s\n' % (p.id, p.count, p.obs)
+        return retr
     
     def iterate(self, n=1):
+        print 'Lex sweep...'
         for i in range(n):
             for word in self.words:
                 # hold out this word
-                try:
-                    oldlex = word.holdout()
-                except EmptyTable:
-                    print 'pruning lex'
+                #try:
+                oldlex = word.holdout()
+                #except EmptyTable:
+                if oldlex.count == 0:
+                    print 'pruning Lex %s (n=%d)' % (oldlex.id, oldlex.count)
                     self.prune(oldlex)
                 # calculate probability of each lex (log lhood + log (pseudo)count)
                 probs = [np.exp(lex.lhood(word)) * lex.count for lex in self.lexs+self.priors]
@@ -124,15 +149,15 @@ class LexDP:
                 else:
                     # new lex...get sampled one from prior and replace it...
                     newlex = self.priors[i-len(self.lexs)]
-                    # update lex counter and assign label to new Lex
-                    newlex.id = self.lexcounter
-                    self.lexcounter += 1
+                    # ...and add it to the list of Lexs
+                    self.addLex(newlex)
                     # record the new Lex
                     word.relabel(newlex)
-                    self.lexs.append(newlex)
                     self.refreshPriors(length=len(word))
             # sweep through the parent PhonDP
             self.parent.iterate()
+            # output the current state just to see what's up
+            print self
     
     def refreshPriors(self, length=None):
         """
@@ -157,22 +182,35 @@ class LexDP:
     def prune(self, lex):
         """Remove a given Lex from the list, pruning parent Phons as necessary"""
         for seg in lex:
-            # throw in a sanity check, just for the hello of it.  if lex.count==0
+            # throw in a sanity check, just for the hell of it.  if lex.count==0
             # then seg.count should == 0 for all segments.
             if seg.obs.n != lex.count:
                 raise Exception("Segment (%d) and Lex (%d) counts disagree..." % 
                                 (seg.obs.n, lex.count))
             # remove from parents, too
-            try:
-                seg.phon.remove(seg)
-            except EmptyTable:
+            #try:
+            #    seg.phon.remove(seg)
+            #except EmptyTable:
+            #    self.parent.prune(seg.phon)
+            seg.phon.remove(seg)
+            if seg.phon.count == 0:
                 self.parent.prune(seg.phon)
         self.lexs.remove(lex)
     
-    def addLex(self, length):
-        """Sample a new Lex and properly update it's parent Phons"""
-        newlex = self.sampleBase(length, n=1, count=0).pop()
+    def addLex(self, newlex=None, length=None):
+        """Add a new Lex to this DP, sampling the base if necessary"""
+        if not newlex:
+            if not length:
+                raise ValueError('Must specify a length for Lex to be sampled')
+            newlex = self.sampleBase(length, n=1, count=0).pop()
         for seg in newlex: seg.phon.add(seg)
+        # initialize lex.count as well (only necessary if newlex was a prior before...)
+        newlex.count = 0
+        newlex.id = self.lexcounter
+        self.lexcounter += 1
+        self.lexs.append(newlex)
+        # print some output for debugging
+        print '  adding Lex %s: %s' % (newlex.id, [seg.phon.id for seg in newlex])
         return newlex
     
     def sampleBase(self, length, n=1, count=0):
@@ -202,17 +240,17 @@ class LexDP:
 
 
 class Phon:
-    def __init__(self, parent=None, count=0, name="generic Phon"):
+    def __init__(self, parent=None, count=0, id=None):
         self.obs = RunningVar()
         self.count = count
-        self.name = name
+        self.id = id
         if parent==None:
             self.params = {'nu': 1.001, 'mu': 0.0, 's': 1.0}
         else:
             self.params = parent.params
 
     def __str__(self):
-        return self.name
+        return "Phon %s: count=%d, obs=%s" % (self.id, self.count, self.obs)
 
     def add(self, seg):
         """
@@ -231,7 +269,7 @@ class Phon:
             raise TypeError('seg needs to be a Segment instance to remove from Phon (not %s)' % seg.__class__)
         self.obs.split(seg.obs)
         self.count -= 1
-        if self.count == 0: raise EmptyTable('Prune this empty Phon!')
+#        if self.count == 0: raise EmptyTable('Prune this empty Phon!')
         if self.count < 0: raise ValueError('Phon count is less than 0...')
 
     def push(self, seg):
@@ -329,9 +367,12 @@ class Lex:
         return self.segs.__iter__()
 
     def __str__(self):
-        ret = 'Lex: ' + '\'untitled\'' if not self.id else str(self.id)
+        if self.id == None:
+            ret = 'Lex: unnamed'
+        else:
+            ret = 'Lex: ' + str(self.id)
         for seg in self:
-            ret += '\n' + seg.__str__()
+            ret += '\n  ' + seg.__str__()
         return ret
     
     def __len__(self):
@@ -365,11 +406,11 @@ class Lex:
             lseg.phon.pull(wseg)
             lseg.obs.pull(wseg)
         self.count -= 1
-        if self.count == 0: raise EmptyTable('Prune this empty Lex!')
+#        if self.count == 0: raise EmptyTable('Prune this empty Lex!')
         if self.count < 0: raise ValueError('Lex count should not be less than 0...')
     
-    def holdout(self, word):
-        self.remove(word)
+#    def holdout(self, word):
+#        self.remove(word)
     
     def lhood(self, word):
         if len(self) != len(word):
@@ -408,9 +449,9 @@ class Word:
     
     def holdout(self):
         """Remove this word from its Lex, set lex to None, and return the old Lex"""
-        self.lex.remove(self.obs)
         l = self.lex
         self.lex = None
+        l.remove(self.obs)
         return l
 
 
@@ -454,6 +495,7 @@ class EmptyTable(Exception):
     """
     def __init__(self, value):
         self.value = value
+        print str(value)
     def __str__(self):
         return repr(self.value)
 
@@ -506,7 +548,7 @@ class RunningVar:
         
         self.n = nx + ny
         if self.n == 0:
-            warnings.warn("merging two empty RVs.")
+            #warnings.warn("merging two empty RVs.")
             self.m = 0
             self.s = 0
         else:
@@ -526,7 +568,7 @@ class RunningVar:
         if self.n < 0:
             raise ValueError('Attempt to split more obs from a RunningVar than it contains')
         elif self.n == 0:
-            warnings.warn('Splitting last observations from a RunningVar')
+            #warnings.warn('Splitting last observations from a RunningVar')
             self.m = 0
             self.s = 0
         else:
@@ -581,13 +623,6 @@ def sampleMultinomial(probs, n=1):
     # nonzero() is the column (object) indices.
     return np.nonzero(np.random.multinomial(1, [x/sum(probs) for x in probs], n))[1]
 
-
-def debug_methodInfo(func):
-    def wrapper(self, *args, **kwargs):
-        sys.stdout.write( '%s.%s ' % (self.__class__.__name__, func.__name__) )
-        func(self, *args, **kwargs)
-        sys.stdout.write( ' (done)\n' )
-    return wrapper
 
 ################################ TESTING STUFF ##########################################
 def makeGaussianPhon(mean=0.0, var=1.0, n=20):
