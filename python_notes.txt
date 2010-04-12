@@ -1,0 +1,82 @@
+what does a DP class do?
+
+lexicon:
+	add word to lex
+	remove word from lex
+	compute lhood of word given lex
+		(for each segment of lex:
+		     compute lhood of word[segment] given lex[segment].parent)
+	sample new lex from prior
+	       (for each of n segments:
+	       	    sample parent from phons)
+	need to keep track of: 
+	     
+
+phons:
+	add (group of)obs to phon
+	remove (group of)obs from phon
+	compute lhood of obs (segment of lex) given phon
+	evaluate prior of group
+
+in general:
+	add obs to comp
+	remove obs from comp
+	compute lhood of comp
+	evaluate/sample from prior
+
+"""most of these are functions of the components:
+"""
+
+
+######################################################
+lexdp:
+	words
+	lexs
+	phons (phondp, or implicit in lexs?)
+	iterate()
+	sample()
+
+word:
+	( label, values )
+
+lex:
+	[ (stats, label), (stats, label), ... ]
+
+phondp:
+	lexs (obs, children?)
+	phons (like lexs, "tables")
+	(prior?)
+	iterate():
+		sweep through segments and reassign labels
+	sample():
+		from DP
+
+################################################################################
+
+problem:
+	need to separate DP count from stats count (number of
+	observations contributing to category mean/var)
+
+	Lex.
+
+solution:
+	separate Phon.count and Phon.obs.n
+	when relabeling a Segment:
+	     	seg.phon.count += 1
+		seg.phon.
+	NO BAD
+
+REAL solution:
+	Phon.add/remove: relabel a segment with Phon, update count
+		(use in Segment.relabel() )
+	Phon.push/pull: percolate changes to .obs up to parent Phons
+		(use in Lex.add() )
+
+(subproblem: also need to separate updating of Phon.obs with LEXICAL
+reseating
+
+
+ ################################################################################
+
+ When count hits zero: should auto-prune??
+DOING IT: see class EmptyTable(Exception)

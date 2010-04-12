@@ -30,7 +30,11 @@ class PhonDP:
                 # seg should be a Segment instance, check here
                 if not isinstance(seg, Segment): raise TypeError('seg should be a Segment')
                 # hold this segment out
-                lab = seg.holdout()
+                try:
+                    lab = seg.holdout()
+                except EmptyTable:
+                    #...pruning it's label if necessary
+                    self.prune(lab)
                 # calculate probabilities (lhood + CRP prior) and sample a Phon
                 probs = [np.exp(p.lhood(seg.obs)) * p.count for p in self.phons+self.priors]
                 i = sampleMultinomial(probs)
@@ -42,10 +46,6 @@ class PhonDP:
                     # picked new phon
                     seg.relabel(self.newphon())
                     self.phons.append(seg.phon)
-                # if the old Phon is empty, remove it
-                if lab.count == 0:
-                    # remove empty phon
-                    self.phons.remove(lab)
         return
 
     def prune(self, phon):
@@ -77,6 +77,7 @@ class LexDP:
         else:
             self.parent = parent
         self.parent.children = self
+        self.lexcounter = 0
         # sort words by length
         wordsByLen = dict()
         for w in words:
@@ -91,7 +92,7 @@ class LexDP:
         for length in wordsByLen.keys():
             # create a new Lex of the appropriate length by sampling Phons
             # from the parent distribution
-            newlex = self.sampleBase(length=length).pop()
+            newlex = self.addLex(length=length).pop()
             # append it to the list of lexs
             self.lexs.append(newlex)
             # add each word of the right length to it (and it's Phons...) and
@@ -103,12 +104,15 @@ class LexDP:
             self.priors.extend(self.sampleBase(length=length, 
                                                n=self.params['r'], 
                                                count=self.params['beta']/self.params['r']))
-
+    
     def iterate(self, n=1):
         for i in range(n):
             for word in self.words:
                 # hold out this word
-                oldlex = word.holdout()
+                try:
+                    oldlex = word.holdout()
+                except EmptyTable:
+                    self.prune(oldlex)
                 # calculate probability of each lex (log lhood + log (pseudo)count)
                 probs = [np.exp(lex.lhood(word)) * lex.count for lex in self.lexs+self.priors]
                 i = sampleMultinomial(probs)
@@ -119,19 +123,18 @@ class LexDP:
                 else:
                     # new lex...get sampled one from prior and replace it...
                     newlex = self.priors[i-len(self.lexs)]
+                    # update lex counter and assign label to new Lex
+                    newlex.id = self.lexcounter
+                    self.lexcounter += 1
+                    # record the new Lex
                     word.relabel(newlex)
                     self.lexs.append(newlex)
                     self.refreshPriors(length=len(word))
                 # remove old Lex if it's empty
                 if oldlex.count == 0:
                     self.prune(oldlex)
-                
-    
-    def segments(self):
-        """Generates an iterator over all segments in the lexicon"""
-        for lex in self.lexs:
-            for seg in lex:
-                yield seg
+            # sweep through the parent PhonDP
+            self.parent.iterate()
     
     def refreshPriors(self, length=None):
         """
@@ -158,11 +161,20 @@ class LexDP:
         for seg in lex:
             # throw in a sanity check, just for the hello of it.  if lex.count==0
             # then seg.count should == 0 for all segments.
-            if seg.count != 0: raise Exception, "Segment and Lex counts disagree..."
-            # 
-            seg.phon.remove(seg.obs)
-            if seg.phon.count == 0: self.parent.prune(seg.phon)
+            if seg.obs.n != lex.count:
+                raise Exception("Segment (%d) and Lex (%d) counts disagree..." % 
+                                (seg.obs.n, lex.count))
+            # remove from parents, too
+            try:
+                seg.phon.remove(seg)
+            except EmptyTable:
+                self.parent.prune(seg.phon)
         self.lexs.remove(lex)
+    
+    def addLex(self, length):
+        """Sample a new Lex and properly update it's parent Phons"""
+        newlex = self.sampleBase(length, n=1, count=0).pop()
+        for seg in newlex: seg.phon.add(seg)
     
     def sampleBase(self, length, n=1, count=0):
         """Sample n Lexs from the base distribution defined by self.parent"""
@@ -182,6 +194,12 @@ class LexDP:
         else:
             probs = [l.count for l in self.lexs]
         return [self.lexs[i] for i in sampleMultinomial(probs, n)]
+    
+    def segments(self):
+        """Generates an iterator over all segments in the lexicon"""
+        for lex in self.lexs:
+            for seg in lex:
+                yield seg
 
 
 class Phon:
@@ -198,23 +216,49 @@ class Phon:
         return self.name
 
     def add(self, seg):
+        """
+        Add a Segment to this Phon, updating summary stats and .count
+        """
+        if not isinstance(seg, Segment):
+            raise TypeError('seg needs to be a Segment instance to add to Phon (not %s)' % seg.__class__)
+        self.obs.merge(seg.obs)
+        self.count += 1
+    
+    def remove(self, seg):
+        """
+        Remove a segment from this Phon, updating summary stats and .count
+        """
+        if not isinstance(seg, Segment):
+            raise TypeError('seg needs to be a Segment instance to remove from Phon (not %s)' % seg.__class__)
+        self.obs.split(seg.obs)
+        self.count -= 1
+        if self.count == 0: raise EmptyTable(Phon)
+        if self.count < 0: raise ValueError('Phon count is less than 0...')
+
+    def push(self, seg):
+        """
+        Push additional observations into this Phon, updating summary stats but
+        not .count (use .add() instead)
+        """
         if isinstance(seg, RunningVar):
             self.obs.merge(seg)
         elif isinstance(seg, numbers.Real):
             self.obs.push(seg)
         else:
-            raise TypeError('seg needs to be number or RunningVar to add to Phon (not %s)' % seg.__class__)
-        self.count += 1
-    
-    def remove(self, seg):
+            raise TypeError('seg needs to be number or RunningVar to push to Phon (not %s)' % seg.__class__)
+
+    def pull(self, seg):
+        """
+        Pull some observations from this Phon, updating summary stats but not
+        .count (use .remove() instead)
+        """
         if isinstance(seg, RunningVar):
             self.obs.split(seg)
         elif isinstance(seg, numbers.Real):
             self.obs.pull(seg)
         else:
-            raise TypeError('seg needs to be number or RunningVar to remove from Phon (not %s)' % seg.__class__)
-        self.count -= 1
-    
+            raise TypeError('seg needs to be number or RunningVar to pull from Phon (not %s)' % seg.__class__)        
+        
     def lhood(self, seg, LOG=True):
         """
         Calcunlate the likelihood (defaults to log) of a given segment, which should
@@ -277,17 +321,18 @@ class Phon:
 
 
 class Lex:
-    def __init__(self, parents, count=0):
+    def __init__(self, parents, count=0, id=None):
         self.count = count
         self.segs = [Segment(RunningVar(), p) for p in parents]
+        self.id = id
     
     def __iter__(self):
         return self.segs.__iter__()
 
     def __str__(self):
-        ret = ''
+        ret = 'Lex: ' + '\'untitled\'' if not self.id else str(self.id)
         for seg in self:
-            ret += seg.__str__() + "\n"
+            ret += '\n' + seg.__str__()
         return ret
     
     def __len__(self):
@@ -308,7 +353,7 @@ class Lex:
         the corresponding Phons)
         """
         for lseg, wseg in zip(self.segs, word):
-            lseg.phon.add(wseg)
+            lseg.phon.push(wseg)
             lseg.obs.push(wseg)
         self.count += 1
     
@@ -318,9 +363,11 @@ class Lex:
         from the corresponding Phons
         """
         for lseg, wseg in zip(self.segs, word):
-            lseg.phon.remove(wseg)
+            lseg.phon.pull(wseg)
             lseg.obs.pull(wseg)
         self.count -= 1
+        if self.count == 0: raise EmptyTable()
+        if self.count < 0: raise ValueError('Lex count should not be less than 0...')
     
     def holdout(self, word):
         self.remove(word)
@@ -390,14 +437,26 @@ class Segment:
     def relabel(self, newphon):
         """Apply a new label to this segment"""
         self.phon = newphon
-        newphon.add(self.obs)
+        newphon.add(self)
     
     def holdout(self):
         """Hold this segment out of its Phon, set phon to None, and return the old label"""
-        self.phon.remove(self.obs)
+        self.phon.remove(self)
         p = self.phon
         self.phon = None
         return p
+
+
+class EmptyTable(Exception):
+    """
+    A custom Exception to indicate that the last customer has been removed from
+    a table (Lex of Phon).  This should be used to trigger some sort of pruning
+    further up the stack (in something like .holdout() or .iterate())
+    """
+    def __init__(self, value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
 
 
 class RunningVar:
