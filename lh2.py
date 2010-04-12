@@ -1,7 +1,7 @@
 from scipy.special import gammaln as lgamma
 from numpy import *
 import numpy as np
-import numbers
+import numbers, warnings
 
 class PhonDP:
     def __init__(self, params=None):
@@ -90,9 +90,8 @@ class LexDP:
         self.priors = []
         self.words = []
         for length in wordsByLen.keys():
-            # create a new Lex of the appropriate length by sampling Phons
-            # from the parent distribution
-            newlex = self.addLex(length=length).pop()
+            # create and add a new Lex for this length
+            newlex = self.addLex(length=length)
             # append it to the list of lexs
             self.lexs.append(newlex)
             # add each word of the right length to it (and it's Phons...) and
@@ -130,9 +129,6 @@ class LexDP:
                     word.relabel(newlex)
                     self.lexs.append(newlex)
                     self.refreshPriors(length=len(word))
-                # remove old Lex if it's empty
-                if oldlex.count == 0:
-                    self.prune(oldlex)
             # sweep through the parent PhonDP
             self.parent.iterate()
     
@@ -175,6 +171,7 @@ class LexDP:
         """Sample a new Lex and properly update it's parent Phons"""
         newlex = self.sampleBase(length, n=1, count=0).pop()
         for seg in newlex: seg.phon.add(seg)
+        return newlex
     
     def sampleBase(self, length, n=1, count=0):
         """Sample n Lexs from the base distribution defined by self.parent"""
@@ -232,7 +229,7 @@ class Phon:
             raise TypeError('seg needs to be a Segment instance to remove from Phon (not %s)' % seg.__class__)
         self.obs.split(seg.obs)
         self.count -= 1
-        if self.count == 0: raise EmptyTable(Phon)
+        if self.count == 0: raise EmptyTable('Prune this empty Phon!')
         if self.count < 0: raise ValueError('Phon count is less than 0...')
 
     def push(self, seg):
@@ -366,7 +363,7 @@ class Lex:
             lseg.phon.pull(wseg)
             lseg.obs.pull(wseg)
         self.count -= 1
-        if self.count == 0: raise EmptyTable()
+        if self.count == 0: raise EmptyTable('Prune this empty Lex!')
         if self.count < 0: raise ValueError('Lex count should not be less than 0...')
     
     def holdout(self, word):
@@ -482,7 +479,9 @@ class RunningVar:
     def pull(self, x):
         """remove a single observation from this rv"""
         self.n -= 1
-        if (self.n==0):
+        if self.n < 0:
+            raise ValueError('Attempt to pull from an empty RunningVar')
+        elif self.n == 0:
             self.m = 0
             self.s = 0
         else:
@@ -504,8 +503,13 @@ class RunningVar:
         sy = other.s
         
         self.n = nx + ny
-        self.m = (nx*mx + ny*my)/self.n
-        self.s = (nx*sx + ny*sy)/self.n + (mx-my)**2 * nx*ny/(nx+ny)**2
+        if self.n == 0:
+            warnings.warn("merging two empty RVs.")
+            self.m = 0
+            self.s = 0
+        else:
+            self.m = (nx*mx + ny*my)/self.n
+            self.s = (nx*sx + ny*sy)/self.n + (mx-my)**2 * nx*ny/(nx+ny)**2
     
     def split(self, other):
         """remove multiple observations from this rv"""
@@ -517,8 +521,15 @@ class RunningVar:
         s = self.s
         
         self.n -= other.n
-        self.m = (n*m - other.n*other.m) / self.n
-        self.s = s*n/self.n - (self.m-other.m)**2 * other.n/n - other.n*other.s / self.n
+        if self.n < 0:
+            raise ValueError('Attempt to split more obs from a RunningVar than it contains')
+        elif self.n == 0:
+            warnings.warn('Splitting last observations from a RunningVar')
+            self.m = 0
+            self.s = 0
+        else:
+            self.m = (n*m - other.n*other.m) / self.n
+            self.s = s*n/self.n - (self.m-other.m)**2 * other.n/n - other.n*other.s / self.n
     
     def rvTest(self):
         """test each of the four runningVar methods"""
