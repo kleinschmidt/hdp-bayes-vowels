@@ -1,7 +1,7 @@
 from scipy.special import gammaln as lgamma
 from numpy import *
 import numpy as np
-import numbers, warnings
+import numbers, warnings, sys
 
 class PhonDP:
     def __init__(self, params=None):
@@ -34,6 +34,7 @@ class PhonDP:
                     lab = seg.holdout()
                 except EmptyTable:
                     #...pruning it's label if necessary
+                    print 'pruning Phon'
                     self.prune(lab)
                 # calculate probabilities (lhood + CRP prior) and sample a Phon
                 probs = [np.exp(p.lhood(seg.obs)) * p.count for p in self.phons+self.priors]
@@ -111,6 +112,7 @@ class LexDP:
                 try:
                     oldlex = word.holdout()
                 except EmptyTable:
+                    print 'pruning lex'
                     self.prune(oldlex)
                 # calculate probability of each lex (log lhood + log (pseudo)count)
                 probs = [np.exp(lex.lhood(word)) * lex.count for lex in self.lexs+self.priors]
@@ -579,6 +581,13 @@ def sampleMultinomial(probs, n=1):
     # nonzero() is the column (object) indices.
     return np.nonzero(np.random.multinomial(1, [x/sum(probs) for x in probs], n))[1]
 
+
+def debug_methodInfo(func):
+    def wrapper(self, *args, **kwargs):
+        sys.stdout.write( '%s.%s ' % (self.__class__.__name__, func.__name__) )
+        func(self, *args, **kwargs)
+        sys.stdout.write( ' (done)\n' )
+    return wrapper
 
 ################################ TESTING STUFF ##########################################
 def makeGaussianPhon(mean=0.0, var=1.0, n=20):
