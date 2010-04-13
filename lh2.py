@@ -49,7 +49,6 @@ class PhonDP:
                 #except EmptyTable:
                 if lab.count == 0:
                     #...pruning its label if necessary
-                    print 'pruning Phon', lab.id
                     self.prune(lab)
                 # calculate probabilities (lhood + CRP prior) and sample a Phon
                 probs = [np.exp(p.lhood(seg.obs)) * p.count for p in self.phons+self.priors]
@@ -68,6 +67,7 @@ class PhonDP:
         Remove a given phon from this DP (method exists pretty much only for
         symmetry's sake with LexDP
         """
+        print '  pruning Phon', phon.id
         self.phons.remove(phon)
     
     def sample(self, n=1):
@@ -119,26 +119,26 @@ class LexDP:
 
     def __str__(self):
         retr = 'LexDP state:\n' + \
-            'Labels:\n  ' + str([w.lex.id for w in self.words]) + '\n' + \
-            'Lexicon:\n'
+            ' Labels:\n  ' + str([w.lex.id for w in self.words]) + '\n' + \
+            ' Lexicon:\n'
         for lex in self.lexs:
             retr += '  %s -> (n=%d) %s\n' % (lex.id, lex.count, [s.phon.id for s in lex])
-        retr += 'Phones:\n'
+        #retr += ' Priors:\n'
+        #for lex in self.priors:
+        #    retr += '  %s -> (n=%d) %s\n' % (lex.id, lex.count, [s.phon.id for s in lex])
+        retr += ' Phones:'
         for p in self.parent.phons:
-            retr += '  %s -> (n=%d) %s\n' % (p.id, p.count, p.obs)
+            retr += '\n  %s -> (n=%d) %s' % (p.id, p.count, p.obs)
         return retr
     
     def iterate(self, n=1):
-        print 'Lex sweep...'
         for i in range(n):
+            print 'Lex sweep...'
             for word in self.words:
                 # hold out this word
-                #try:
                 oldlex = word.holdout()
-                #except EmptyTable:
-                if oldlex.count == 0:
-                    print 'pruning Lex %s (n=%d)' % (oldlex.id, oldlex.count)
-                    self.prune(oldlex)
+                # pruning it's Lex label if necessary
+                if oldlex.count == 0: self.prune(oldlex)
                 # calculate probability of each lex (log lhood + log (pseudo)count)
                 probs = [np.exp(lex.lhood(word)) * lex.count for lex in self.lexs+self.priors]
                 i = sampleMultinomial(probs)
@@ -153,13 +153,25 @@ class LexDP:
                     self.addLex(newlex)
                     # record the new Lex
                     word.relabel(newlex)
-                    self.refreshPriors(length=len(word))
+                    # refresh priors (since phon segment counts have changed)
+                    self.refreshPriors()
             # sweep through the parent PhonDP
             self.parent.iterate()
+            self.refreshPriors()
             # output the current state just to see what's up
             print self
+
+    def refreshPriors(self):
+        """
+        Resample Lexs from the base distribution to be used in approximation
+        of the prior probability of a word.  This should be done whenever the
+        counts of any of the Phons in the parent distribution change.
+        """
+        self.priors = [self.sampleBase(length=len(lex),
+                                       count=self.params['beta']/self.params['r']).pop()
+                       for lex in self.priors]
     
-    def refreshPriors(self, length=None):
+    def __new_OLD__refreshPriors(self, length=None):
         """
         Resample Lexs of the specified length from the base distribution defined
         the parent PhonDP.
@@ -168,6 +180,7 @@ class LexDP:
         # the priors if no length is specified
         indices = (i for i in range(len(self.priors))
                    if len(self.priors[i])==length or not length)
+        print indices
         for i in indices:
             self.priors[i] = self.sampleBase(len(self.priors[i]), n=1,
                                              count=self.params['beta']/self.params['r']).pop()
@@ -181,6 +194,7 @@ class LexDP:
     
     def prune(self, lex):
         """Remove a given Lex from the list, pruning parent Phons as necessary"""
+        print '  pruning Lex %s (n=%d)' % (lex.id, lex.count)
         for seg in lex:
             # throw in a sanity check, just for the hell of it.  if lex.count==0
             # then seg.count should == 0 for all segments.
@@ -196,6 +210,7 @@ class LexDP:
             if seg.phon.count == 0:
                 self.parent.prune(seg.phon)
         self.lexs.remove(lex)
+        self.refreshPriors()
     
     def addLex(self, newlex=None, length=None):
         """Add a new Lex to this DP, sampling the base if necessary"""
@@ -414,7 +429,7 @@ class Lex:
     
     def lhood(self, word):
         if len(self) != len(word):
-            return 0
+            return -np.inf
         else:
             L = 0
             for lseg, wseg in zip(self.segs, word.obs):
@@ -621,7 +636,7 @@ def sampleMultinomial(probs, n=1):
     # multinomial returns a trials-by-object matrix which has one
     # nonzero entry per row.  the second element returned by
     # nonzero() is the column (object) indices.
-    return np.nonzero(np.random.multinomial(1, [x/sum(probs) for x in probs], n))[1]
+    return np.nonzero(np.random.multinomial(1, [float(x)/sum(probs) for x in probs], n))[1]
 
 
 ################################ TESTING STUFF ##########################################
@@ -645,4 +660,26 @@ def makeSomeWords():
     obs2 = np.random.normal(-2, 1.0, 50)
     words1 = zip(obs1[0:25], obs2[0:25])
     words2 = zip(obs2[25:50], obs1[25:50])
-    return (words1 + words2)
+    words3 = [(x,) for x in np.random.normal(2, 1.0, 25)]
+    words4 = [(x,) for x in np.random.normal(-2, 1.0, 25)]
+    return (words1 + words2 + words3 + words4)
+
+def makeWords1dToy(minPairs=False):
+    A = list(np.random.normal(-5, 1.0, 400))
+    B = list(np.random.normal(-1, 1.0, 200))
+    C = list(np.random.normal(1, 1.0, 200))
+    D = list(np.random.normal(5, 1.0, 400))
+    if minPairs:
+        wAB = [(A.pop(), B.pop()) for n in range(100)]
+        wAC = [(A.pop(), C.pop()) for n in range(100)]
+        wDB = [(D.pop(), B.pop()) for n in range(100)]
+        wDC = [(D.pop(), C.pop()) for n in range(100)]
+        words = wAB + wAC + wDB + wDC
+    else:
+        wAB = [(A.pop(), B.pop()) for n in range(200)]
+        wDC = [(D.pop(), C.pop()) for n in range(200)]
+        words = wAB + wDC
+    wD = [(D.pop(), ) for n in range(100)]
+    wADA = [(A.pop(), D.pop(), A.pop()) for n in range(100)]
+    words += wD + wADA
+    return words
