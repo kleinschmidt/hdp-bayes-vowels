@@ -23,18 +23,23 @@ def mvlhood(obs, cat, LOG=True):
     nu = nu0 + cat.n
     mu = (mu0*nu0 + cat.n*cat.mean) / nu
     s = s0 + cat.M2 + np.outer(cat.mean-mu0, cat.mean-mu0) * nu0*cat.n/nu
-    d = max(cat.mean.shape)
+    d = float(max(cat.mean.shape))
     print nu, mu, s, d
 
     lgam = lambda x: lgammad(x, d)
     L = lgam((nu+obs.n)/2) + nu/2 * np.log(np.linalg.det(s)) - \
         lgam(nu/2) - d*obs.n/2 * np.log(np.pi) - d/2 * np.log(obs.n/nu + 1) - \
-        (nu+obs.n)/2 * np.linalg.det(s + obs.M2 + np.outer(obs.mean-mu, obs.mean-mu) * obs.n*nu/(obs.n+nu))
+        (nu+obs.n)/2 * np.log(np.linalg.det(s + obs.M2 + np.outer(obs.mean-mu, obs.mean-mu) * obs.n*nu/(obs.n+nu)))
     if LOG: return L
     else: return np.exp(L)
 
 def mvlhood1(obs, cat, LOG=True):
     return mvlhood(MDRunningVar(n=1, mean=obs, M2=0.), cat, LOG)
+
+def testLhood(samp):
+    m = MDRunningVar()
+    m.pushall(samp)
+    return m, [mvlhood1(x, m) for x in samp]
 
 class MDRunningVar():
     def __init__(self, n=0, mean=0., M2=0.):
