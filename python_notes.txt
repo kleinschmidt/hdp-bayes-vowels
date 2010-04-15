@@ -80,3 +80,14 @@ reseating
 
  When count hits zero: should auto-prune??
 DOING IT: see class EmptyTable(Exception)
+
+################################################################################
+TODO: (merging multi-d implementation)
+
+Change anything that uses RunningVar...
+which is:
+    Phon (especially .lhood() )
+
+Phon:
+    type checking in push/pull (replace numbers.Real with ndarray (or
+    something else?)

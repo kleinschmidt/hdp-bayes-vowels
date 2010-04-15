@@ -363,13 +363,12 @@ class Phon:
     
     def test(self):
         # this checks out with the R implementation in lh2.r
-        p = Phon(None)
-        x = range(20)
+        x = [Segment(RunningVar(n=1,m=o,s=0.), self) for o in range(20)]
         for o in x: 
-            p.add(o)
-        print p.obs
-        print [p.lhood(RunningVar(n=1, m=float(o), s=0.0)) for o in x]
-        return p
+            self.add(o)
+        print self.obs
+        print [self.lhood(o.obs) for o in x]
+        return self
 
 
 class Lex:
