@@ -27,9 +27,9 @@ def mvlhood(obs, cat, LOG=True):
     print nu, mu, s, d
 
     lgam = lambda x: lgammad(x, d)
-    L = lgam((nu+obs.n)/2) + nu/2 * np.log(np.linalg.det(s)) - \
-        lgam(nu/2) - d*obs.n/2 * np.log(np.pi) - d/2 * np.log(obs.n/nu + 1) - \
-        (nu+obs.n)/2 * np.log(np.linalg.det(s + obs.M2 + np.outer(obs.mean-mu, obs.mean-mu) * obs.n*nu/(obs.n+nu)))
+    L = lgam((nu+obs.n)*0.5) + nu*0.5 * np.log(np.linalg.det(s)) - \
+        lgam(nu/2) - d*obs.n*0.5 * np.log(np.pi) - d*0.5 * np.log((obs.n+nu)/nu) - \
+        (nu+obs.n)*0.5 * np.log(np.linalg.det(s + obs.M2 + np.outer(obs.mean-mu, obs.mean-mu) * obs.n*nu/(obs.n+nu)))
     if LOG: return L
     else: return np.exp(L)
 
