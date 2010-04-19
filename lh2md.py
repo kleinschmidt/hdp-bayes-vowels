@@ -114,7 +114,7 @@ class LexDP:
         for length in wordsByLen.keys():
             # create and add a new Lex for this length
             newlex = self.addLex(length=length)
-            print newlex
+            #DEBUG print newlex
             # add each word of the right length to it (and it's Phons...) and
             # append a properly labeled Word to self.words
             for w in wordsByLen[length]:
@@ -127,7 +127,7 @@ class LexDP:
 
     def __str__(self):
         retr = 'LexDP state:\n' + \
-            ' Labels:\n  ' + str([w.lex.id for w in self.words]) + '\n' + \
+            ' Labels:\n  ' + str([('(heldout)' if w.lex==None else w.lex.id) for w in self.words]) + '\n' + \
             ' Lexicon:\n'
         for lex in self.lexs:
             retr += '  %s -> (n=%d) %s\n' % (lex.id, lex.count, [s.phon.id for s in lex])
@@ -144,7 +144,12 @@ class LexDP:
             print 'Lex sweep...'
             for word in self.words:
                 # hold out this word
-                oldlex = word.holdout()
+                try:
+                    oldlex = word.holdout()
+                except ValueError:
+                    print 'Holding out', word, '\n  from', word.lex
+                    print self
+                    raise
                 # pruning it's Lex label if necessary
                 if oldlex.count == 0: self.prune(oldlex)
                 # calculate probability of each lex (log lhood + log (pseudo)count)
@@ -153,7 +158,8 @@ class LexDP:
                 # record the new label, adding a new lex/refreshing priors as necessary
                 if i < len(self.lexs):
                     # old lex
-                    word.relabel(self.lexs[i])
+                    newlex = self.lexs[i]
+                    word.relabel(newlex)
                 else:
                     # new lex...get sampled one from prior and replace it...
                     newlex = self.priors[i-len(self.lexs)]
@@ -163,6 +169,8 @@ class LexDP:
                     word.relabel(newlex)
                     # refresh priors (since phon segment counts have changed)
                     self.refreshPriors()
+                if len(newlex) != len(word):
+                    print 'OH SHIT LENGTH MISMATCH:\n  word', word.obs, '\n  -->', newlex, '\n  probs:', probs
             # sweep through the parent PhonDP
             self.parent.iterate()
             self.refreshPriors()
@@ -227,12 +235,12 @@ class LexDP:
                 raise ValueError('Must specify a length for Lex to be sampled')
             newlex = self.sampleBase(length, n=1, count=0).pop()
         for seg in newlex:
-            print '  adding seg to phon', seg.phon
+            #DEBUG print '  adding seg to phon', seg.phon
             seg.phon.add(seg)
         # initialize lex.count as well (only necessary if newlex was a prior before...)
         newlex.count = 0
         newlex.id = self.lexcounter
-        print '  setting new lex name to', newlex.id
+        #DEBUG print '  setting new lex name to', newlex.id
         self.lexcounter += 1
         self.lexs.append(newlex)
         # print some output for debugging
@@ -454,6 +462,10 @@ class Word:
     def __len__(self):
         return len(self.obs)
 
+    def __str__(self):
+        return 'Word: (' + ', '.join([str(x) for x in self.obs]) + ') <- ' + \
+            ('None' if self.lex==None else str(self.lex.id))
+    
     def relabel(self, newlex):
         """Apply a new Lex label to this word"""
         self.lex = newlex
@@ -499,6 +511,15 @@ class Segment:
         return p
 
 
+def checkNaN(func):
+    def wrapper(self, *args, **kwargs):
+        func(self, *args, **kwargs)
+        if np.isnan(self.mean).any() or np.isnan(self.M2).any():
+            print self
+            raise ValueError('NaN found in MDRunningVar after call to ' + func.__name__)
+    return wrapper
+
+
 class MDRunningVar():
     def __init__(self, n=0, mean=0., M2=0.):
         # count of observations
@@ -517,10 +538,10 @@ class MDRunningVar():
                 raise ValueError('Mean and covariance matrices must have congruent sizes')
             
     def __str__(self):
-        return "mrv(n=%s, m=%s, s=%s)" % (self.n, self.mean, self.var())
+        return "mrv(n=%s, m=%s, s=%s)" % (self.n, self.mean, strMatrixOneLine(self.var()))
 
     def __repr__(self):
-        return "mrv(n=%s, m=%s, s=%s)" % (repr(self.n), repr(self.mean), repr(self.var()))
+        return "mrv(n=%s, m=%s, s=%s)" % (repr(self.n), repr(self.mean), reprMatrixOneLine(self.var()))
         
     def var(self):
         """Convert second cumulant (which is tracked incrementally) into variance"""
@@ -540,8 +561,12 @@ class MDRunningVar():
     def pull(self, x):
         delta = x - self.mean
         self.n = self.n - 1
-        self.mean = self.mean - delta/self.n
-        self.M2 = self.M2 - np.outer((x-self.mean), delta)
+        if self.n == 0:
+            self.mean = 0. * self.mean
+            self.M2 = 0. * self.M2
+        else:
+            self.mean = self.mean - delta/self.n
+            self.M2 = self.M2 - np.outer((x-self.mean), delta)
 
     def pullall(self, X):
         for x in X: self.pull(x)
@@ -574,7 +599,6 @@ class MDRunningVar():
             self.mean = self.mean - (other.mean-self.mean) * other.n/self.n
             self.M2 = self.M2 - other.M2 - np.outer(self.mean-other.mean, self.mean-other.mean) * self.n*other.n/(self.n+other.n)
 
-
 def sampleMultinomial(probs, n=1):
     """
     Sample from a multinomial distribution over given probabilities.
@@ -593,6 +617,18 @@ def sampleMultinomial(probs, n=1):
     # nonzero() is the column (object) indices.
     return np.nonzero(np.random.multinomial(1, normProbs, n))[1]
 
+
+def strMatrixOneLine(nda):
+    if isinstance(nda, np.ndarray):
+        return '[' + ', '.join([str(x) for x in nda]) + ']'
+    else:
+        return str(nda)
+
+def reprMatrixOneLine(nda):
+    if isinstance(nda, np.ndarray):
+        return '[' + ', '.join([repr(x) for x in nda]) + ']'
+    else:
+        return repr(nda)
 
 ################################ TESTING STUFF ##########################################
 def makeGaussianPhon(mean=0.0, var=1.0, n=20):
@@ -659,7 +695,7 @@ def makeWords(lexdict=None, phondict=None):
     covariance matrices for multivariate Gaussian distributions.
     """
     if not lexdict:
-        lexdict = {(1, 2): 10, (2,1): 10, (1,): 10}
+        lexdict = {(1, 2): 100, (2,1): 100, (1,): 100}
     if not phondict:
         m = np.array([1.,1.])
         cov = np.array([[1.,0.], [0.,1.]])
