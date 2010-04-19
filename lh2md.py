@@ -679,9 +679,9 @@ def makeWords1dToy(minPairs=False):
 
 class mvg:
     """Wrapper class for a multivariate Gaussian distribution"""
-    def __init__(self, mean, cov):
-        self.mean = mean
-        self.cov = cov
+    def __init__(self, mean, cov=np.array([[1., 0.], [0., 1.]])):
+        self.mean = np.array(mean).reshape(-1)
+        self.cov = np.array(cov).reshape( (self.mean.shape[0],)*2 )
 
     def draw(self, n=1):
         return np.random.multivariate_normal(mean=self.mean, cov=self.cov, size=n)
@@ -695,9 +695,9 @@ def makeWords(lexdict=None, phondict=None):
     covariance matrices for multivariate Gaussian distributions.
     """
     if not lexdict:
-        lexdict = {(1, 2): 100, (2,1): 100, (1,): 100}
+        lexdict = {(1, 2): 200, (2,1): 200, (1,): 200}
     if not phondict:
-        m = np.array([1.,1.])
+        m = np.array([1.,1.]) * 2
         cov = np.array([[1.,0.], [0.,1.]])
         phondict = {1: mvg(mean=m, cov=cov), 2: mvg(mean=-1*m, cov=cov)}
     words = []
