@@ -659,7 +659,7 @@ def makeWords(lexdict=None, phondict=None):
     covariance matrices for multivariate Gaussian distributions.
     """
     if not lexdict:
-        lexdict = {(1, 2): 100, (2,1): 100, (1,): 100}
+        lexdict = {(1, 2): 10, (2,1): 10, (1,): 10}
     if not phondict:
         m = np.array([1.,1.])
         cov = np.array([[1.,0.], [0.,1.]])
