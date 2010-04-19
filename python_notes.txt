@@ -90,4 +90,4 @@ which is:
 
 Phon:
     type checking in push/pull (replace numbers.Real with ndarray (or
-    something else?)
+    something else?) CHECK

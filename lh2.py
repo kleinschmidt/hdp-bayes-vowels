@@ -682,3 +682,31 @@ def makeWords1dToy(minPairs=False):
     wADA = [(A.pop(), D.pop(), A.pop()) for n in range(100)]
     words += wD + wADA
     return words
+
+class mvg:
+    """Wrapper class for a multivariate Gaussian distribution"""
+    def __init__(self, mean, cov):
+        self.mean = mean
+        self.cov = cov
+
+    def draw(self, n=1):
+        return np.random.multivariate_normal(mean=mean, cov=cov, size=n)
+        
+
+def makeWords(lexdict=None, phondict=None):
+    """
+    Make words according to lexdict and phondict.  lexdict should be a dictionary
+    of word-count mappings, where words are tuples of phons.  phondict should be a
+    dict of phon-parameter mappings, where the parameters are the means and
+    covariance matrices for multivariate Gaussian distributions.
+    """
+    if not lexdict:
+        lexdict = {(1, 2): 100, (2,1): 100, (1,): 100}
+    if not phondict:
+        m = array([1.,1.])
+        cov = array([[1.,0.], [0.,1.]])
+        phondict = {1: mvg(mean=m, cov=cov), 2: mvg(mean=-1*m, cov=cov)}
+    words = []
+    for lex, count in lexdict.iteritems():
+        words += zip(*[p.draw(n=count) for p in lex])
+    return words
