@@ -554,9 +554,11 @@ class MDRunningVar():
         #DEBUG print 'x =', x, 'self.mean =', self.mean, 'delta =', delta, 'n =', self.n
         self.mean = self.mean + delta/self.n
         self.M2 = self.M2 + np.outer(delta, (x-self.mean))
+        return self
 
     def pushall(self, X):
         for x in X: self.push(x)
+        return self
 
     def pull(self, x):
         delta = x - self.mean
@@ -567,9 +569,11 @@ class MDRunningVar():
         else:
             self.mean = self.mean - delta/self.n
             self.M2 = self.M2 - np.outer((x-self.mean), delta)
+        return self
 
     def pullall(self, X):
         for x in X: self.pull(x)
+        return self
 
     def merge(self, other):
         if not isinstance(other, MDRunningVar):
@@ -584,6 +588,7 @@ class MDRunningVar():
         else:
             self.mean = self.mean + delta*other.n/self.n
             self.M2 = self.M2 + other.M2 + M2delta
+        return self
 
     def split(self, other):
         if not isinstance(other, MDRunningVar):
@@ -598,6 +603,7 @@ class MDRunningVar():
         else:
             self.mean = self.mean - (other.mean-self.mean) * other.n/self.n
             self.M2 = self.M2 - other.M2 - np.outer(self.mean-other.mean, self.mean-other.mean) * self.n*other.n/(self.n+other.n)
+        return self
 
 def sampleMultinomial(probs, n=1):
     """
