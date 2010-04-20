@@ -689,6 +689,9 @@ class mvg:
         self.mean = np.array(mean).reshape(-1)
         self.cov = np.array(cov).reshape( (self.mean.shape[0],)*2 )
 
+    def __str__(self):
+        return 'mvg(mean=' + str(self.mean) + ', cov=' + strMatrixOneLine(self.cov) + ' )'
+
     def draw(self, n=1):
         return np.random.multivariate_normal(mean=self.mean, cov=self.cov, size=n)
         
