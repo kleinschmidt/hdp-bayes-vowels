@@ -68,7 +68,7 @@ def simulate(niter=100, printEvery=-1, numWords=5000, randLex=lexgen.FeldmanRand
     for n in range(niter):
         print 'Iteration', n+1
         ldp.iterate()
-        if mod(n+1,printEvery)==1: print ldp
+        if np.mod(n+1,printEvery)==1: print ldp
         print 'Phon confusion table:'
         print 'Phon mut. info.: %.4f' % phonMutualInfo(ldp, lexs)
     return ldp
