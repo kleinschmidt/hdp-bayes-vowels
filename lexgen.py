@@ -125,55 +125,99 @@ def cmu2hill(vowels):
 ## FINALLY make some words...
 ################################################################################
 
-class RandomLexicon():
-    def __init__(self, lexdict=IPhODlexdict(), phondict=HillenbrandPhondict()):
-        self.lexs = lexdict.keys()
-        totalprob = sum(lexdict.values())
-        self.probs = array([x/totalprob for x in lexdict.values()])
-        self.phons = phondict
-
-    def draw(self, n=1, withLexs=False):
-        ls = [self.lexs[i] for i in lh2md.sampleMultinomial(self.probs, n)]
-        words = [tuple(self.phons[ph].draw() for ph in lex) for lex in ls]
-        if withLexs: words = zip(ls, words)
-        if n==1: return words.pop()
-        else: return words
-
-class CRPRandomLexicon():  
+class DPRandomLexicon():
     """
-    Generate a random lexicon from phons using a geometric distribution over lexical
-    length and CRP sampling of lexemes
+    Represents a Dirichlet Process random lexicon, which provides observations
+    through Chinese Restaurant Process sampling.
     """
-    def __init__(self, phondict=HillenbrandPhondict(), concentration=10., length=0.5):
+    def __init__(self, base, concentration=10., phondict=HillenbrandPhondict()):
+        self.base = base
         self.phons = phondict
-        self.con = float(concentration)
-        self.len = length
         self.lexs = []
-        self.lexcounts = []
-
-    def newlex(self):
-        length = random.geometric(self.len)
-        lex = tuple(self.phons.keys()[i] for i in
-                    lh2md.sampleMultinomial(probs=[1.]*len(self.phons), n=length))
-        self.lexs.append(lex)
-        self.lexcounts.append(1)
-        return lex
+        self.lexcount = []
+        self.con = float(concentration)
 
     def draw1(self, withLexs=False):
-        counts = array(self.lexcounts + [self.con])
+        counts = array(self.lexcount + [self.con])
         i = lh2md.sampleMultinomial(counts)
         if i == len(self.lexs):
-            lex = self.newlex()
+            lex = self.base.draw()
+            self.lexs.append(lex)
+            self.lexcount.append(1)
         else:
             lex = self.lexs[i]
-            self.lexcounts[i] += 1
+            self.lexcount[i] += 1
         samp = tuple(self.phons[ph].draw() for ph in lex)
-        if withLexs: return samp, lex
+        if withLexs: return (samp, lex)
         else: return samp
 
     def draw(self, n=None, withLexs=False):
         if n == None: return self.draw1(withLexs)
         else: return [self.draw1(withLexs) for i in range(n)]
+
+
+class IPhODRandomLexicon(DPRandomLexicon):
+    """
+    Represents a random DP lexicon with a multinomial base distribution taken from
+    the Irvine Phonetic Dictionary frequency counts.
+    """
+    def __init__(self, concentration=10., phondict=HillenbrandPhondict()):
+        DPRandomLexicon.__init__(self,
+                                 base=IPhODBaseDistribution(),
+                                 concentration=concentration,
+                                 phondict=phondict)
+
+
+class IPhODBaseDistribution():
+    """
+    Represents a multinomial base distribution of lexemes with probabilities
+    generated from frequencies in the Irvine Phonetic Dictionary
+    """
+    def __init__(self):
+        lexdict = IPhODlexdict()
+        self.lexs = lexdict.keys()
+        totalprob = sum(lexdict.values())
+        self.probs = array([x/totalprob for x in lexdict.values()])
+
+    def draw(self, n=None):
+        if n==None: return self.lexs[lh2md.sampleMultinomial(self.probs, 1)]
+        else: return [self.lexs[i] for i in lh2md.sampleMultinomial(self.probs, n)]
+
+
+class FeldmanRandomLexicon(DPRandomLexicon):
+    """
+    Represent a random lexicon based on the generative model from Feldman (2009)
+    """
+    def __init__(self, concentration=10., phondict=HillenbrandPhondict(), length=0.5):
+        DPRandomLexicon.__init__(self,
+                                 base=FeldmanBaseDistribution(phondict, length),
+                                 concentration=concentration,
+                                 phondict=phondict)
+
+
+class FeldmanBaseDistribution():
+    """
+    Represents a base distribution defined by the generative model from Feldman
+    (2009), where a length is randomly selected according to a geometric distribution
+    and phones are independently assigned to each slot.
+    """
+    def __init__(self, phondict=HillenbrandPhondict(), length=0.5):
+        self.phons = phondict.keys()
+        self.phoncounts = [1.]*len(self.phons)
+        self.len = length
+
+    def drawPhon(self, n=None):
+        if n == None: return self.phons[lh2md.sampleMultinomial(self.phoncounts)]
+        else: return [self.phons[i] for i in lh2md.sampleMultinomial(self.phoncounts, n)]
+
+    def draw1(self):
+        length = random.geometric(self.len)
+        return tuple(self.drawPhon(length))
+
+    def draw(self, n=None):
+        if n == None: return self.draw1()
+        else: return [self.draw1() for n in range(n)]
+
 
 hillHDPparams = {'nu': 1.001,
                  'mu': array([500., 1500.]),

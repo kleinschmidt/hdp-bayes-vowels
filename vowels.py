@@ -46,7 +46,7 @@ def phonMutualInfo(ldp, lexlabels):
 
 ###########################SIMULATION FUNCTIONS#################################
 
-def simulate(niter=100, printEvery=-1, numWords=5000, randLex=lexgen.CRPRandomLexicon):
+def simulate(niter=100, printEvery=-1, numWords=5000, randLex=lexgen.FeldmanRandomLexicon):
     """
     Run the Feldman lexical-phonetic learner for specified number of iterations
     with running analysis of phon confusions, mutual info, etc.  Keyword arguemnt
@@ -66,7 +66,7 @@ def simulate(niter=100, printEvery=-1, numWords=5000, randLex=lexgen.CRPRandomLe
     # create and initialize a LexDP
     ldp = lh2md.LexDP(samp, params=lexgen.hillHDPparams)
     for n in range(niter):
-        print 'Iteration', n
+        print 'Iteration', n+1
         ldp.iterate()
         if mod(n+1,printEvery)==1: print ldp
         print 'Phon confusion table:'
