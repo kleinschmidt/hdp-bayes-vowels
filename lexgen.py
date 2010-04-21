@@ -138,4 +138,40 @@ class RandomLexicon():
         if withLexs: words = zip(ls, words)
         if n==1: return words.pop()
         else: return words
-        
+
+class CRPRandomLexicon():  
+    """
+    Generate a random lexicon from phons using a geometric distribution over lexical
+    length and CRP sampling of lexemes
+    """
+    def __init__(self, phondict, concentration, length):
+        self.phons = phondict
+        self.con = float(concentration)
+        self.len = length
+        self.lexs = []
+        self.lexcounts = []
+
+    def newlex(self):
+        length = random.geometric(self.len)
+        lex = tuple(self.phons.keys()[i] for i in
+                    lh2md.sampleMultinomial(probs=[1.]*len(self.phons), n=length))
+        self.lexs.append(lex)
+        self.lexcounts.append(1)
+        return lex
+
+    def draw1(self, withLexs=False):
+        counts = array(self.lexcounts + [self.con])
+        i = lh2md.sampleMultinomial(counts)
+        if i == len(self.lexs):
+            lex = self.newlex()
+        else:
+            lex = self.lexs[i]
+            self.lexcounts[i] += 1
+        samp = tuple(self.phons[ph].draw() for ph in lex)
+        if withLexs: return lex, samp
+        else: return samp
+
+    def draw(self, n=None, withLexs=False):
+        if n == None: return self.draw1(withLexs)
+        else: return [self.draw1(withLexs) for i in range(n)]
+

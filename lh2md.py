@@ -1,6 +1,6 @@
 from scipy.special import multigammaln as lgammad
 import numpy as np
-import numbers, warnings, sys
+import numbers, warnings, sys, pickle
 
 
 def debugMethodInfo(func):
@@ -126,9 +126,9 @@ class LexDP:
                                                count=self.params['beta']/self.params['r']))
 
     def __str__(self):
-        retr = 'LexDP state:\n' + \
-            ' Labels:\n  ' + str([('(heldout)' if w.lex==None else w.lex.id) for w in self.words]) + '\n' + \
-            ' Lexicon:\n'
+        retr = 'LexDP state:\n'
+        #retr += ' Labels:\n  ' + str([('(heldout)' if w.lex==None else w.lex.id) for w in self.words]) + '\n'
+        retr += ' Lexicon:\n'
         for lex in self.lexs:
             retr += '  %s -> (n=%d) %s\n' % (lex.id, lex.count, [s.phon.id for s in lex])
         #retr += ' Priors:\n'
@@ -692,6 +692,9 @@ class mvg:
     def __str__(self):
         return 'mvg(mean=' + str(self.mean) + ', cov=' + strMatrixOneLine(self.cov) + ' )'
 
+    def __repr__(self):
+        return str(self)
+
     def draw(self, n=1):
         return np.random.multivariate_normal(mean=self.mean, cov=self.cov, size=n)
         
@@ -715,3 +718,6 @@ def makeWords(lexdict=None, phondict=None):
         print '  word: %s (%s)' % (lex, count)
         words += zip(*[phondict[p].draw(n=count) for p in lex])
     return words
+
+
+
