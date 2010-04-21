@@ -141,7 +141,7 @@ class LexDP:
             retr += '\n  %s -> (n=%d) %s' % (p.id, p.count, p.obs)
         return retr
     
-    def iterate(self, n=1):
+    def iterate(self, n=1, printEvery=None):
         for i in range(n):
             print 'Lex sweep...'
             for word in self.words:
@@ -172,7 +172,7 @@ class LexDP:
             self.parent.iterate()
             self.refreshPriors()
             # output the current state just to see what's up
-            print self
+            if printEvery: print self
 
     def refreshPriors(self):
         """

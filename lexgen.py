@@ -168,7 +168,7 @@ class CRPRandomLexicon():
             lex = self.lexs[i]
             self.lexcounts[i] += 1
         samp = tuple(self.phons[ph].draw() for ph in lex)
-        if withLexs: return lex, samp
+        if withLexs: return samp, lex
         else: return samp
 
     def draw(self, n=None, withLexs=False):
