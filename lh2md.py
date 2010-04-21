@@ -93,6 +93,8 @@ class LexDP:
             if params['s'].shape != (d,d):
                 raise ValueError('Prior covariance must have correct dimensionality')
             self.params = params
+            self.params['alpha'] = float(params['alpha'])
+            self.params['beta'] = float(params['beta'])
         # initialize parent PhonDP
         if not parent:
             self.parent = PhonDP(params)
@@ -144,12 +146,7 @@ class LexDP:
             print 'Lex sweep...'
             for word in self.words:
                 # hold out this word
-                try:
-                    oldlex = word.holdout()
-                except ValueError:
-                    print 'Holding out', word, '\n  from', word.lex
-                    print self
-                    raise
+                oldlex = word.holdout()
                 # pruning it's Lex label if necessary
                 if oldlex.count == 0: self.prune(oldlex)
                 # calculate probability of each lex (log lhood + log (pseudo)count)
@@ -169,8 +166,8 @@ class LexDP:
                     word.relabel(newlex)
                     # refresh priors (since phon segment counts have changed)
                     self.refreshPriors()
-                if len(newlex) != len(word):
-                    print 'OH SHIT LENGTH MISMATCH:\n  word', word.obs, '\n  -->', newlex, '\n  probs:', probs
+                #DEBUG if len(newlex) != len(word):
+                    #DEBUG print 'OH SHIT LENGTH MISMATCH:\n  word', word.obs, '\n  -->', newlex, '\n  probs:', probs
             # sweep through the parent PhonDP
             self.parent.iterate()
             self.refreshPriors()

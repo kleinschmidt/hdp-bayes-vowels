@@ -81,7 +81,7 @@ def crunchHill(hdata):
         except KeyError:
             vdict[vowel] = {gender: lh2md.MDRunningVar().push(F123)}
     for vowel in vdict:
-        All = MDRunningVar()
+        All = lh2md.MDRunningVar()
         [All.merge(x) for x in vdict[vowel].values()]
         vdict[vowel]['all'] = All
     return vdict
@@ -144,7 +144,7 @@ class CRPRandomLexicon():
     Generate a random lexicon from phons using a geometric distribution over lexical
     length and CRP sampling of lexemes
     """
-    def __init__(self, phondict, concentration, length):
+    def __init__(self, phondict=HillenbrandPhondict(), concentration=10., length=0.5):
         self.phons = phondict
         self.con = float(concentration)
         self.len = length
@@ -175,3 +175,10 @@ class CRPRandomLexicon():
         if n == None: return self.draw1(withLexs)
         else: return [self.draw1(withLexs) for i in range(n)]
 
+hillHDPparams = {'nu': 1.001,
+                 'mu': array([500., 1500.]),
+                 's': array([[1., 0.], [0., 1.]]),
+                 'alpha': 1,
+                 'beta': 1,
+                 'r': 5}
+                 
